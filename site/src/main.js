@@ -12,9 +12,11 @@ import { FINISHES, ROOM_TEXT, SPOTS, TEXT, applyFinish, getLang, setLang, t } fr
 import { buildApartment, buildOutside } from './build.js';
 import { loadModels } from './models.js';
 import { assignLightmapUV } from './lightmapuv.js';
+import { startLoader } from './loader.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('view');
+const loading = startLoader($('loaderView'));
 
 let renderer;
 try {
@@ -38,7 +40,10 @@ new RGBELoader(loadingManager).load('textures/photo_studio_loft_hall_1k.hdr', (h
 // Diffuse light comes from the bake; the HDRI only adds reflections.
 scene.environmentIntensity = 0.22;
 
-const models = await loadModels((share) => { $('loadBar').style.transform = `scaleX(${share * 0.6})`; });
+const models = await loadModels((share) => {
+  $('loadBar').style.transform = `scaleX(${share * 0.6})`;
+  loading.progress(share * 0.6);
+});
 const apartment = buildApartment(scene, models);
 const outside = buildOutside(scene);
 
@@ -108,7 +113,8 @@ const bakeReady = Promise.all([
     const count = mesh.geometry.attributes.position.count;
     mesh.geometry.computeBoundingBox();
     const size = mesh.geometry.boundingBox.getSize(new THREE.Vector3()).toArray().sort((a, b) => a - b);
-    const sliver = size[1] < 0.05 || (size[0] < 0.03 && size[2] < 0.7);
+    // Black metal frames and profiles too: their edges touch walls and glass and sparkled.
+    const sliver = size[1] < 0.05 || (size[0] < 0.03 && size[2] < 0.7) || mesh.material === mats.blackMetal;
     mesh.userData.bakeLight = Object.fromEntries(VARIANTS.map((key, i) => {
       let data = new Uint8Array(vertexLight[i], start * 3, count * 3);
       // A bar or profile has corners buried in the wall it touches, which bake to stray extremes
@@ -269,6 +275,57 @@ const planInk = drawnPlane(20, 20, 150, (ctx) => {
     ctx.fillText(t, 0, 0);
     ctx.restore();
   }
+  // Structural grid, as on a drawing set: axes through the main walls, numbered across and lettered
+  // down, with dimension chains between them (centre to centre) and the overall size outside.
+  const AX = [413, 556, 631, 899, 949].map(X), AZ = [135, 420, 702, 939].map(Z);
+  const RED = '#a8491f';
+  const seg = (x0, z0, x1, z1) => { ctx.beginPath(); ctx.moveTo(x0, z0); ctx.lineTo(x1, z1); ctx.stroke(); };
+  const metres = (d) => d.toFixed(2).replace('.', ',');
+  const bubbleAt = (x, z, label) => {
+    ctx.beginPath(); ctx.arc(x, z, 0.13, 0, Math.PI * 2);
+    ctx.fillStyle = PAPER; ctx.fill(); ctx.stroke();
+    ctx.fillStyle = RED; ctx.fillText(label, x, z + 0.005);
+  };
+  ctx.save();
+  ctx.strokeStyle = 'rgba(168,73,31,.5)';
+  ctx.lineWidth = 0.006;
+  ctx.setLineDash([0.14, 0.04, 0.02, 0.04]);
+  const top = BOUNDS.z0 - 0.95, left = BOUNDS.x0 - 0.95;
+  for (const x of AX) seg(x, top + 0.13, x, BOUNDS.z1 + 0.2);
+  for (const z of AZ) seg(left + 0.13, z, BOUNDS.x1 + 0.2, z);
+  ctx.setLineDash([]);
+  ctx.strokeStyle = RED;
+  ctx.lineWidth = 0.008;
+  ctx.font = `600 0.12px ${MONO}`;
+  AX.forEach((x, i) => bubbleAt(x, top, String(i + 1)));
+  AZ.forEach((z, i) => bubbleAt(left, z, 'ABCD'[i]));
+  // Chains: one between axes, one overall, ticks drawn as short slashes.
+  ctx.strokeStyle = INK;
+  ctx.fillStyle = INK;
+  ctx.lineWidth = 0.006;
+  ctx.font = `0.085px ${MONO}`;
+  const tick = (x, z) => seg(x - 0.045, z + 0.045, x + 0.045, z - 0.045);
+  const chainX = (z, stops) => {
+    seg(stops[0] - 0.08, z, stops.at(-1) + 0.08, z);
+    stops.forEach((x) => { tick(x, z); seg(x, z - 0.06, x, z + 0.06); });
+    for (let i = 1; i < stops.length; i++) ctx.fillText(metres(stops[i] - stops[i - 1]), (stops[i] + stops[i - 1]) / 2, z - 0.07);
+  };
+  const chainZ = (x, stops) => {
+    seg(x, stops[0] - 0.08, x, stops.at(-1) + 0.08);
+    stops.forEach((z) => { tick(x, z); seg(x - 0.06, z, x + 0.06, z); });
+    for (let i = 1; i < stops.length; i++) {
+      ctx.save(); ctx.translate(x - 0.07, (stops[i] + stops[i - 1]) / 2); ctx.rotate(-Math.PI / 2);
+      ctx.fillText(metres(stops[i] - stops[i - 1]), 0, 0); ctx.restore();
+    }
+  };
+  chainX(BOUNDS.z0 - 0.3, AX);
+  chainX(BOUNDS.z0 - 0.58, [BOUNDS.x0, BOUNDS.x1]);
+  chainZ(BOUNDS.x0 - 0.3, AZ);
+  chainZ(BOUNDS.x0 - 0.58, [BOUNDS.z0, BOUNDS.z1]);
+  ctx.restore();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = INK;
   // Door swings, from the arcs in the PDF.
   ctx.strokeStyle = INK;
   ctx.lineWidth = 0.008;
@@ -291,14 +348,22 @@ const planInk = drawnPlane(20, 20, 150, (ctx) => {
     ctx.fillText('ÁREA INTERNA APROX. 30 M²', tx, tz + 1.04);
   }
   ctx.font = `0.125px ${MONO}`;
-  // Scale bar
-  const sz = BOUNDS.z1 - 0.1;
-  ctx.fillRect(tx, sz, 1, 0.035);
-  ctx.fillText('1 M', tx + 1.1, sz + 0.04);
-  ctx.lineWidth = 0.012;
-  ctx.beginPath(); ctx.moveTo(tx, sz - 1.35); ctx.lineTo(tx, sz - 0.65); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(tx - 0.09, sz - 1.17); ctx.lineTo(tx, sz - 1.35); ctx.lineTo(tx + 0.09, sz - 1.17); ctx.stroke();
-  ctx.fillText('N', tx + 0.16, sz - 1.22);
+  // Scale bar and north arrow under the title, clear of the buttons in the bottom corner.
+  // On a phone held upright the title column is off screen: bar under the plan, arrow beside the grid.
+  const wide = innerWidth >= innerHeight;
+  const sx = wide ? tx : BOUNDS.x0, sz = wide ? tz + 2.75 : BOUNDS.z1 + 0.42;
+  ctx.fillRect(sx, sz, 1, 0.035);
+  ctx.fillText('1 M', sx + 1.1, sz + 0.04);
+  // North arrow: compass ring with a half-filled needle.
+  const nx = wide ? tx + 0.28 : BOUNDS.x1 + 0.5, nz = wide ? sz - 0.85 : BOUNDS.z0 - 0.75;
+  ctx.lineWidth = 0.01;
+  ctx.beginPath(); ctx.arc(nx, nz, 0.26, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(nx, nz - 0.34); ctx.lineTo(nx - 0.1, nz + 0.16); ctx.lineTo(nx, nz + 0.08); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(nx, nz - 0.34); ctx.lineTo(nx + 0.1, nz + 0.16); ctx.lineTo(nx, nz + 0.08); ctx.closePath(); ctx.stroke();
+  ctx.textAlign = 'center';
+  ctx.font = `600 0.14px ${SERIF}`;
+  ctx.fillText('N', nx, nz - 0.42);
+  ctx.textAlign = 'left';
 }, 0.012, { transparent: true, depthWrite: false, depthTest: false });
 planInk.renderOrder = 20;
 
@@ -309,7 +374,8 @@ const pos = (x, y, z) => new THREE.Vector3(x, y, z);
 const K = [
   // fov: vertical degrees for the aerial keys; h: horizontal degrees inside, so a wide screen
   // never stretches the rooms (74 vertical on 16:9 was about 105 horizontal, a fisheye).
-  { t: 0, p: pos(CX, 70, CZ + 0.08), l: look(CX, 0, CZ), fov: 8 },
+  // Centred a little up and left of the plan: the grid bubbles and chains sit on those sides.
+  { t: 0, p: pos(CX - 0.3, 78, CZ - 0.42), l: look(CX - 0.3, 0, CZ - 0.5), fov: 8 },
   { t: 1.7, p: pos(8.5, 15, 13), l: look(CX, 0.7, CZ), fov: 22 },
   { t: 1.4, p: pos(-2.4, EYE, 0.5), l: look(1.2, 1.35, 0.5), h: 70 },
   { t: 1.2, p: pos(0.5, EYE, 0.5), l: look(4.6, 1.1, 1.4), h: 82, room: 0 },
@@ -390,7 +456,9 @@ const keyFov = (key, aspect) => {
 };
 
 // Room reveal: starts as the camera reaches each doorway, then sweeps from that door.
-const REVEAL_FROM = [2.25, 3.9, 5.5, 10.3, 15.2, 18.3];
+// The laundry opens with the kitchen (one continuous counter), and the bathroom and bedroom are
+// ready before the camera reaches their doors, so no stop looks at a half-drawn room.
+const REVEAL_FROM = [2.25, 3.9, 4.2, 10.3, 14.3, 17.4];
 ROOMS.forEach((room, i) => {
   shared.uRect.value[i].set(room.x0 - 0.08, room.z0 - 0.08, room.x1 + 0.08, room.z1 + 0.08);
   shared.uSweep.value[i].set(room.door[0], room.door[1], 0);
@@ -411,9 +479,20 @@ function poseAt(u, out) {
   }
   // Fit the sheet on any screen at the top of the page.
   const aspect = innerWidth / innerHeight;
-  const fit = Math.max(1, 0.82 / Math.max(aspect, 0.01));
+  const fit = Math.max(1, (aspect < 1 ? 0.86 : 0.82) / Math.max(aspect, 0.01));
   const planFactor = 1 - band(u, 0, 0.6);
   out.pos.y *= 1 + (fit - 1) * planFactor;
+  // Upright phone: the closing bird's-eye view steps back so the whole apartment fits the width.
+  if (aspect < 1) {
+    const end = smooth(band(u, K.length - 1.8, K.length - 1));
+    if (end > 0) out.pos.sub(out.target).multiplyScalar(1 + (Math.min(2, 0.9 / aspect) - 1) * 0.6 * end).add(out.target);
+  }
+  // On a phone the buttons take the bottom of the screen: lift the sheet into the space above them.
+  if (aspect < 1 && planFactor > 0) {
+    const shift = 2 * out.pos.y * Math.tan(THREE.MathUtils.degToRad(keyFov(K[0], aspect) / 2)) * 0.07 * planFactor;
+    out.pos.z += shift;
+    out.target.z += shift;
+  }
   out.fov = keyFov(K[i], aspect) + (keyFov(K[i + 1], aspect) - keyFov(K[i], aspect)) * f;
   return out;
 }
@@ -450,7 +529,9 @@ function renderAt(u) {
   camera.lookAt(pose.target);
   camera.updateProjectionMatrix();
 
-  shared.uCut.value = 1.2 + (CEILING + 0.002 - 1.2) * smooth(band(u, 0.18, 1.35)) * (1 - lift);
+  // Walls drop back to the 1.20 m cut as the camera leaves at the end, so it rises over a plan.
+  const closing = smooth(band(u, 21.6, 22.4));
+  shared.uCut.value = 1.2 + (CEILING + 0.002 - 1.2) * smooth(band(u, 0.18, 1.35)) * (1 - lift) * (1 - closing);
   planInk.material.opacity = Math.max(1 - band(u, 0.12, 0.6), lift);
   planInk.visible = planInk.material.opacity > 0.001;
 
@@ -575,6 +656,9 @@ function setTime(value) {
 }
 setTime('day');
 
+// A reload always starts at the plan: the walk only makes sense from the beginning.
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+scrollTo(0, 0);
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 gsap.registerPlugin(ScrollTrigger, ScrollSmoother);
 if (!reduced) ScrollSmoother.create({ wrapper: '#smooth-wrapper', content: '#smooth-content', smooth: 1.4, smoothTouch: 0.1 });
@@ -715,7 +799,9 @@ Promise.all([bakeReady, texturesReady]).then(([info]) => {
 });
 
 renderAt(0);
+loading.progress(1);
 $('loader').hidden = true;
+loading.stop();
 
 // ---------- interaction: look around, points of interest, measuring, finishes, language ----------
 const insideFrom = 2.6;

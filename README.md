@@ -13,6 +13,7 @@ Passeio 3D por um apartamento de 30 m², conduzido pela rolagem da página. A p�
 - **Luz calculada no Blender.** A iluminação é renderizada no Blender Cycles (4096 px, 512 amostras) em oito versões: nascer do sol, manhã, tarde e noite, com e sem móveis. As janelas ficam todas na parede leste, então o sol só entra de manhã: baixo e alaranjado ao nascer, em manchas no piso no meio da manhã. Superfícies planas usam um atlas de lightmap; peças curvas recebem luz por vértice.
 - **Reflexos por cômodo.** Cada cômodo captura uma imagem 360° de si mesmo depois que a luz é aplicada. Espelho, vidro, metais, geladeira, pedra e azulejo refletem o próprio cômodo, com projeção na caixa do ambiente.
 - **Rolagem com GSAP.** ScrollSmoother suaviza a rolagem e ScrollTrigger conduz a câmera por 24 paradas. As viradas usam interpolação de ângulos, então a câmera nunca gira de forma brusca.
+- **Planta de projeto.** Eixos numerados e com letras, cotas entre eixos e totais, nome e área de cada cômodo, escala e norte. Enquanto carrega, uma régua, um lápis e uma borracha em 3D esperam sobre o papel.
 - **Entre cômodos pela planta.** Ao pular de um cômodo para outro, a câmera sobe até a vista da planta, com as paredes cortadas a 1,20 m e os nomes e áreas no chão, e desce no cômodo escolhido.
 - **Profundidade de campo.** Parada num ponto do passeio, a câmera foca no que está em primeiro plano e desfoca de leve o fundo.
 - **Vista da janela.** Silhuetas de prédios pintadas no céu em três camadas de distância, com janelas acesas à noite.

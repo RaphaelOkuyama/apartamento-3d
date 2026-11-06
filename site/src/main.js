@@ -580,13 +580,21 @@ function renderAt(u) {
 }
 
 // ---------- page ----------
+// On phones the address bar slides in and out while scrolling. The canvas is sized to the largest
+// viewport (CSS 100lvh) and only a real change, a rotation or a new width, resizes it: resizing on
+// every slide made the first scroll stutter.
+const touchDevice = matchMedia('(pointer: coarse)').matches;
+let sizedW = 0, sizedH = 0;
 function resize() {
-  renderer.setSize(innerWidth, innerHeight, false);
+  const w = canvas.clientWidth || innerWidth, h = canvas.clientHeight || innerHeight;
+  if (touchDevice && w === sizedW && Math.abs(h - sizedH) < 160) return;
+  sizedW = w; sizedH = h;
+  renderer.setSize(w, h, false);
   if (composer) {
     composer.setPixelRatio(renderer.getPixelRatio());
-    composer.setSize(innerWidth, innerHeight);
+    composer.setSize(w, h);
   }
-  camera.aspect = innerWidth / innerHeight;
+  camera.aspect = w / h;
 }
 addEventListener('resize', resize);
 resize();
@@ -786,17 +794,24 @@ function captureProbes() {
   shared.uSweep.value.forEach((v, i) => { v.z = reach[i]; });
   [sheet.visible, planInk.visible, apartment.ceilingGroup.visible, outside.visible] = shown;
 }
-Promise.all([bakeReady, texturesReady]).then(([info]) => {
-  if (!info) return;
-  lightRange = info.range;
-  bakedLight = true;
-  scene.remove(...fallback);
-  applyLight();
-  setupProbes();
-  captureProbes();
-  // Compile the interior pipeline now, so the first step inside does not hitch.
-  if (composer) renderAt(2.2);
+bakeReady.then(() => { $('loadBar').style.transform = 'scaleX(0.8)'; loading.progress(0.8); });
+// Everything the walk needs is ready before the loader lifts: baked light, textures, room
+// reflections and every shader compiled. Lifting it earlier let the first scroll freeze while the
+// house was still being prepared, worst on phones.
+const lightReady = Promise.all([bakeReady, texturesReady]).then(async ([info]) => {
+  if (info) {
+    lightRange = info.range;
+    bakedLight = true;
+    scene.remove(...fallback);
+    applyLight();
+    setupProbes();
+    captureProbes();
+  }
+  try { await renderer.compileAsync(scene, camera); } catch { /* compiled on first draw instead */ }
+  // One frame in each part of the walk, so nothing is uploaded or compiled mid-scroll.
+  for (const u of [2.2, 5, 9, 11, 16, 20, 23]) renderAt(u);
 });
+await Promise.race([lightReady, new Promise((done) => setTimeout(done, 25000))]);
 
 renderAt(0);
 loading.progress(1);
@@ -816,11 +831,11 @@ addEventListener('pointermove', (e) => {
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
   drag.x = e.clientX; drag.y = e.clientY;
   drag.moved += Math.abs(dx) + Math.abs(dy);
-  // The view moves with the hand, as if pulling the room. On touch, vertical swipes keep
-  // scrolling the page; only sideways ones turn the head.
-  if (drag.touch && Math.abs(dy) > Math.abs(dx)) return;
+  // The view moves with the hand, as if pulling the room.
+  // Touch screens keep the scripted view: a finger only scrolls, it never turns the camera.
+  if (drag.touch) return;
   gaze.yaw = Math.max(-1.2, Math.min(1.2, gaze.yaw + dx * 0.005));
-  if (!drag.touch) gaze.pitch = Math.max(-0.5, Math.min(0.5, gaze.pitch + dy * 0.004));
+  gaze.pitch = Math.max(-0.5, Math.min(0.5, gaze.pitch + dy * 0.004));
   hint.classList.add('off');
 });
 addEventListener('pointerup', (e) => {
@@ -1011,7 +1026,7 @@ applyText();
 // The first time the camera is inside, say once that the view can be turned.
 let hinted = false;
 function updateHint() {
-  if (!hinted && cam.u > 3 && cam.u < 3.4) {
+  if (!hinted && !touchDevice && cam.u > 3 && cam.u < 3.4) {
     hinted = true;
     hint.textContent = t('drag');
     hint.classList.remove('off');

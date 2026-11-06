@@ -61,7 +61,7 @@ body { font:15px/1.45 Georgia, "Times New Roman", serif; }
 #card h3 { margin:0 0 4px; font-weight:400; font-size:22px; line-height:1.15; }
 #card p { margin:0; }
 #card button { position:absolute; right:6px; top:6px; width:32px; height:32px; border:0; background:none; color:var(--ink); font-size:18px; cursor:pointer; }
-#finishes { position:fixed; z-index:11; right:clamp(16px,4vw,48px); bottom:calc(clamp(20px,5vh,48px) + 56px); width:min(300px, calc(100vw - 32px)); padding:12px 14px 14px; background:rgba(241,237,226,.96); display:grid; gap:10px; }
+#finishes { position:fixed; z-index:11; right:clamp(16px,4vw,48px); bottom:calc(clamp(20px,5vh,48px) + 56px); width:min(320px, calc(100vw - 32px)); max-height:min(62vh, 560px); overflow-y:auto; overscroll-behavior:contain; padding:12px 14px 14px; background:rgba(241,237,226,.96); display:grid; gap:10px; }
 #finishes .row { display:grid; gap:6px; }
 #finishes .swatches { display:flex; gap:8px; flex-wrap:wrap; }
 #finishes .swatch { width:34px; height:34px; border-radius:50%; border:2px solid rgba(23,24,26,.25); cursor:pointer; padding:0; }

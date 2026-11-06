@@ -24,7 +24,7 @@ Passeio 3D por um apartamento de 30 m², conduzido pela rolagem da página. A p�
 | Olhar em volta | Arraste com o mouse; no celular, deslize para os lados |
 | Ver medidas de um móvel | Toque nos pontos **+** que aparecem nos móveis |
 | Medir qualquer distância | **Medir**, depois toque em dois pontos |
-| Trocar acabamentos | **Acabamentos**: cor do sofá, do piso e dos armários |
+| Trocar acabamentos | **Acabamentos**: sofá, piso, armários, madeira dos painéis, paredes, meia-parede, bancadas, roupa de cama, cortinas e cadeiras |
 | Dia e noite, com e sem móveis | Botões no canto inferior |
 | Mudar o idioma | **EN** / **PT** |
 

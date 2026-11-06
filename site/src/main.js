@@ -617,9 +617,10 @@ addEventListener('pointermove', (e) => {
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
   drag.x = e.clientX; drag.y = e.clientY;
   drag.moved += Math.abs(dx) + Math.abs(dy);
-  // On touch, vertical swipes keep scrolling the page; only sideways ones turn the head.
+  // The view moves with the hand, as if pulling the room. On touch, vertical swipes keep
+  // scrolling the page; only sideways ones turn the head.
   if (drag.touch && Math.abs(dy) > Math.abs(dx)) return;
-  gaze.yaw = Math.max(-1.2, Math.min(1.2, gaze.yaw - dx * 0.005));
+  gaze.yaw = Math.max(-1.2, Math.min(1.2, gaze.yaw + dx * 0.005));
   if (!drag.touch) gaze.pitch = Math.max(-0.5, Math.min(0.5, gaze.pitch + dy * 0.004));
   hint.classList.add('off');
 });
@@ -753,11 +754,11 @@ function buildFinishes() {
     label.textContent = t(f.key).toUpperCase();
     const swatches = document.createElement('div');
     swatches.className = 'swatches';
-    for (const [hex, pt, en] of f.options) {
+    for (const [hex, pt, en, swatch] of f.options) {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'swatch';
-      b.style.background = f.key === 'floor' ? `linear-gradient(135deg, ${hex}, #b08a63)` : hex;
+      b.style.background = swatch ?? hex;
       b.title = getLang() === 'en' ? en : pt;
       b.setAttribute('aria-label', b.title);
       b.classList.toggle('on', (chosen[f.key] ?? f.options[0][0]) === hex);

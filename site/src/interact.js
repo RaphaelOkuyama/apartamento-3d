@@ -16,7 +16,7 @@ export const TEXT = {
     stops: ['Planta', 'Sala', 'Cozinha', 'Jantar', 'Gamer', 'Banho', 'Dormitório 01', 'Vista'],
     drag: 'Arraste para olhar em volta',
     close: 'Fechar',
-    sofa: 'Sofá', floor: 'Piso', cabinets: 'Armários',
+    sofa: 'Sofá', floor: 'Piso', cabinets: 'Armários', wood: 'Madeira dos painéis', walls: 'Paredes', accent: 'Meia-parede da sala', counter: 'Bancadas', bedding: 'Roupa de cama', curtains: 'Cortinas', chairs: 'Assento das cadeiras',
   },
   en: {
     loading: 'BUILDING THE APARTMENT',
@@ -30,7 +30,7 @@ export const TEXT = {
     stops: ['Plan', 'Living', 'Kitchen', 'Dining', 'Gaming', 'Bath', 'Bedroom', 'View'],
     drag: 'Drag to look around',
     close: 'Close',
-    sofa: 'Sofa', floor: 'Floor', cabinets: 'Cabinets',
+    sofa: 'Sofa', floor: 'Floor', cabinets: 'Cabinets', wood: 'Wood panels', walls: 'Walls', accent: 'Living room half wall', counter: 'Countertops', bedding: 'Bedding', curtains: 'Curtains', chairs: 'Chair seats',
   },
 };
 export const ROOM_TEXT = {
@@ -75,10 +75,19 @@ export const SPOTS = [
 ];
 
 // ---------- finishes ----------
+// [colour, Portuguese, English, swatch]. Textured surfaces (wood, stone, floor) take the colour
+// as a tint over their grain, so their swatch shows the result instead of the raw tint.
 export const FINISHES = [
-  { key: 'sofa', material: () => mats.sofaFabric, options: [['#ede5d5', 'Linho cru', 'Natural linen'], ['#7b7f63', 'Oliva', 'Olive'], ['#b0714d', 'Terracota', 'Terracotta'], ['#8c8d91', 'Cinza', 'Grey']] },
-  { key: 'floor', material: () => mats.wood, options: [['#ffffff', 'Carvalho claro', 'Light oak'], ['#c9a27f', 'Carvalho mel', 'Honey oak'], ['#8a6a52', 'Nogueira', 'Walnut']] },
-  { key: 'cabinets', material: () => mats.cabinetCream, options: [['#ddd5c5', 'Creme', 'Cream'], ['#a9b39b', 'Sálvia', 'Sage'], ['#4b5560', 'Azul petróleo', 'Petrol blue'], ['#f1efea', 'Branco', 'White']] },
+  { key: 'sofa', material: () => mats.sofaFabric, options: [['#ede5d5', 'Linho cru', 'Natural linen'], ['#7b7f63', 'Oliva', 'Olive'], ['#b0714d', 'Terracota', 'Terracotta'], ['#8c8d91', 'Cinza', 'Grey'], ['#3d4a63', 'Azul-marinho', 'Navy'], ['#c9a04a', 'Mostarda', 'Mustard'], ['#d9b8ad', 'Rosé', 'Blush']] },
+  { key: 'floor', material: () => mats.wood, options: [['#ffffff', 'Carvalho claro', 'Light oak', '#c9a27c'], ['#c9a27f', 'Carvalho mel', 'Honey oak', '#a77c55'], ['#8a6a52', 'Nogueira', 'Walnut', '#6e5140'], ['#b9b4ab', 'Carvalho acinzentado', 'Grey oak', '#9a8f80'], ['#efe6da', 'Carvalho branco', 'White oak', '#d8c6ae']] },
+  { key: 'cabinets', material: () => mats.cabinetCream, options: [['#ddd5c5', 'Creme', 'Cream'], ['#a9b39b', 'Sálvia', 'Sage'], ['#4b5560', 'Azul petróleo', 'Petrol blue'], ['#f1efea', 'Branco', 'White'], ['#6f7552', 'Verde-oliva', 'Olive green'], ['#b77a5c', 'Terracota', 'Terracotta'], ['#2f3033', 'Grafite', 'Graphite']] },
+  { key: 'wood', material: () => mats.oakPale, options: [['#f2e6d2', 'Carvalho claro', 'Light oak', '#d2b48c'], ['#d8b892', 'Freijó', 'Freijó', '#b48a5f'], ['#a7805f', 'Nogueira', 'Walnut', '#7d5a3e'], ['#e9e4dc', 'Pinus branco', 'White pine', '#d9cdb9']] },
+  { key: 'walls', material: () => mats.wall, options: [['#ede6d9', 'Off-white', 'Off-white'], ['#e3d3bb', 'Areia', 'Sand'], ['#d5dacb', 'Verde-névoa', 'Mist green'], ['#d9d6d1', 'Cinza quente', 'Warm grey'], ['#f3f1ec', 'Branco', 'White']] },
+  { key: 'accent', material: () => mats.paintBeige, options: [['#c8b089', 'Bege', 'Beige'], ['#8f9a7a', 'Verde', 'Green'], ['#b9806a', 'Argila', 'Clay'], ['#7d8ea3', 'Azul', 'Blue'], ['#d8c9b0', 'Linho', 'Linen']] },
+  { key: 'counter', material: () => mats.terrazzo, options: [['#ffffff', 'Terrazzo claro', 'Light terrazzo', '#e9e2d4'], ['#c9c6bf', 'Terrazzo cinza', 'Grey terrazzo', '#b8b2a7'], ['#e6cfb8', 'Terrazzo rosado', 'Pink terrazzo', '#d9bea7'], ['#6b6862', 'Terrazzo grafite', 'Graphite terrazzo', '#605c55']] },
+  { key: 'bedding', material: () => mats.duvet, options: [['#cfc8b8', 'Areia', 'Sand'], ['#f3f0e9', 'Branco', 'White'], ['#9aa58c', 'Sálvia', 'Sage'], ['#c48d78', 'Terracota', 'Terracotta'], ['#8592a6', 'Azul', 'Blue']] },
+  { key: 'curtains', material: () => mats.curtain, options: [['#e6dfd0', 'Linho', 'Linen'], ['#f4f2ec', 'Branco', 'White'], ['#b9a68a', 'Caramelo', 'Caramel'], ['#8c958a', 'Verde', 'Green'], ['#5c6170', 'Grafite', 'Graphite']] },
+  { key: 'chairs', material: () => mats.seatBeige, options: [['#b9ab95', 'Bege', 'Beige'], ['#6f7552', 'Oliva', 'Olive'], ['#a8654a', 'Terracota', 'Terracotta'], ['#4a4d55', 'Grafite', 'Graphite']] },
 ];
 export function applyFinish(finish, hex, linked) {
   const color = new THREE.Color(hex);

@@ -7,7 +7,8 @@ export const TEXT = {
   pt: {
     loading: 'MONTANDO O APARTAMENTO',
     scroll: 'ROLE PARA ENTRAR NA PLANTA',
-    night: 'Ver à noite', day: 'Ver de dia',
+    times: ['Nascer do sol', 'Manhã', 'Tarde', 'Noite'], timeLabel: 'Hora do dia',
+    stop: 'PARADA', next: 'Próxima', prev: 'Parada anterior', replay: 'REFAZER O PASSEIO DESDE A PLANTA ↑',
     empty: 'Ver sem móveis', full: 'Ver mobiliado',
     measure: 'Medir', measuring: 'Medindo: toque em dois pontos', finishes: 'Acabamentos',
     lang: 'EN', langLabel: 'Switch to English',
@@ -21,7 +22,8 @@ export const TEXT = {
   en: {
     loading: 'BUILDING THE APARTMENT',
     scroll: 'SCROLL TO ENTER THE PLAN',
-    night: 'Night view', day: 'Day view',
+    times: ['Sunrise', 'Morning', 'Afternoon', 'Night'], timeLabel: 'Time of day',
+    stop: 'STOP', next: 'Next', prev: 'Previous stop', replay: 'REPLAY THE WALK FROM THE PLAN ↑',
     empty: 'Empty rooms', full: 'Furnished',
     measure: 'Measure', measuring: 'Measuring: tap two points', finishes: 'Finishes',
     lang: 'PT', langLabel: 'Mudar para português',
@@ -69,9 +71,9 @@ export const SPOTS = [
   { pos: [4.2, 1.25, 2.75], pt: ['Frigobar', 'Porta de vidro · gavetas de snacks embaixo'], en: ['Mini fridge', 'Glass door · snack drawers below'] },
   { pos: [0.12, 1.55, -1.0], pt: ['Armário espelhado', '1,52 m · do box até o fim da parede'], en: ['Mirror cabinet', '1.52 m · from the shower to the wall\'s end'] },
   { pos: [0.75, 1.3, -1.72], pt: ['Box de vidro', 'Perfil preto · chuveiro de teto'], en: ['Glass shower', 'Black frame · ceiling rain head'] },
-  { pos: [3.06, 0.85, -1.4], pt: ['Cama de casal', '1,44 × 1,93 m · colchão a 61 cm'], en: ['Double bed', '1.44 × 1.93 m · mattress at 61 cm'] },
+  { pos: [3.47, 0.85, -1.3], pt: ['Cama de casal', '1,44 × 1,93 m · encostada na janela, 95 cm livres do outro lado'], en: ['Double bed', '1.44 × 1.93 m · against the window, 95 cm clear on the other side'] },
   { pos: [1.55, 1.5, -2.1], pt: ['Guarda-roupa', 'Do chão ao forro, ligado aos aéreos'], en: ['Wardrobe', 'Floor to ceiling, joined to the upper cabinets'] },
-  { pos: [3.06, 1.4, -0.22], pt: ['TV do quarto', '65" em painel ripado de carvalho'], en: ['Bedroom TV', '65" on a ribbed oak panel'] },
+  { pos: [3.38, 1.45, -0.22], pt: ['TV do quarto', '65" na parede, sem rack: 40 cm livres no pé da cama'], en: ['Bedroom TV', '65" wall-mounted, no console: 40 cm clear at the foot of the bed'] },
 ];
 
 // ---------- finishes ----------

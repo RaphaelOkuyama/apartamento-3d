@@ -5,6 +5,7 @@ import { RenderPass } from '../vendor/postprocessing/RenderPass.js';
 import { ShaderPass } from '../vendor/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from '../vendor/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from '../vendor/postprocessing/OutputPass.js';
+import { BokehPass } from '../vendor/postprocessing/BokehPass.js';
 import { BOUNDS, CEILING, EYE, ROOMS, X, Z } from './plan.js';
 import { drawing, loadingManager, mats, screens, shared, texturesReady } from './materials.js';
 import { FINISHES, ROOM_TEXT, SPOTS, TEXT, applyFinish, getLang, setLang, t } from './interact.js';
@@ -42,17 +43,19 @@ const apartment = buildApartment(scene, models);
 const outside = buildOutside(scene);
 
 // ---------- baked light ----------
-// The four lightmaps come from tools/bake.py. Encoded as sRGB, scaled to a known range.
+// Eight lightmaps from tools/bake.py: four times of day, furnished or empty. Encoded as sRGB,
+// scaled to a known range.
+const TIMES = ['golden', 'day', 'afternoon', 'night'];
+const VARIANTS = TIMES.flatMap((time) => [`${time}_full`, `${time}_empty`]);
 const lightmaps = {};
 const lightmapLoader = new THREE.TextureLoader();
-const lightmapsReady = Promise.all(['day_full', 'day_empty', 'night_full', 'night_empty'].map(async (key) => {
+const lightmapsReady = Promise.all(VARIANTS.map(async (key) => {
   const texture = await lightmapLoader.loadAsync(`bake/${key}.webp`);
   texture.channel = 1;
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 4;
   lightmaps[key] = texture;
 }));
-const VARIANTS = ['day_full', 'day_empty', 'night_full', 'night_empty'];
 // Atlas coordinates for flat surfaces, computed here and sent to Blender with the model.
 const cornerGroups = new WeakMap();
 function smoothCorners(position, source) {
@@ -136,10 +139,12 @@ const bakeReady = Promise.all([
   return info;
 });
 const LIT = Object.entries(mats).filter(([name]) => name !== 'glass' && name !== 'sheer').map(([, material]) => material);
-let night = false, furnished = true, lightRange = 6, bakedLight = false;
+let time = 'day', furnished = true, lightRange = 6, bakedLight = false;
+const EXPOSURE = { golden: 1.0, day: 1.02, afternoon: 1.1, night: 1.0 };
 function applyLight() {
+  renderer.toneMappingExposure = EXPOSURE[time];
   if (!bakedLight) return;
-  const key = `${night ? 'night' : 'day'}_${furnished ? 'full' : 'empty'}`;
+  const key = `${time}_${furnished ? 'full' : 'empty'}`;
   const map = lightmaps[key];
   shared.uBakeScale.value = lightRange * Math.PI;
   for (const mesh of apartment.baked) if (mesh.userData.bakeLight) mesh.geometry.setAttribute('bakeLight', mesh.userData.bakeLight[key]);
@@ -148,7 +153,7 @@ function applyLight() {
     material.lightMap = map;
     material.lightMapIntensity = lightRange * Math.PI;
   }
-  scene.environmentIntensity = night ? 0.06 : 0.22;
+  scene.environmentIntensity = time === 'night' ? 0.06 : time === 'golden' ? 0.14 : 0.22;
   if (probes) captureProbes();
 }
 let probes = null;
@@ -156,7 +161,7 @@ let probes = null;
 // ---------- post-processing ----------
 // Off on touch devices, where the budget is better spent on frame rate.
 const POST = !matchMedia('(pointer: coarse)').matches && innerWidth >= 768;
-let composer = null;
+let composer = null, dof = null;
 const GRADE = {
   uniforms: { tDiffuse: { value: null } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
@@ -185,6 +190,13 @@ if (POST) {
         gl_FragColor = vec4(min(c.rgb, vec3(24.0)), c.a);
       }`,
   }));
+  // Depth of field, only while the camera rests at a stop: the piece in front stays sharp, the
+  // far wall and the window soften a little, like a photo taken with an open lens.
+  dof = new BokehPass(scene, new THREE.PerspectiveCamera(), { focus: 2, aperture: 0.006, maxblur: 0 });
+  dof.enabled = false;
+  const sizeDepth = dof.setSize.bind(dof);
+  dof.setSize = (w, h) => sizeDepth(Math.max(1, w >> 1), Math.max(1, h >> 1));
+  composer.addPass(dof);
   composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 0.26, 0.55, 1.35));
   composer.addPass(new ShaderPass(GRADE));
   composer.addPass(new OutputPass());
@@ -229,9 +241,11 @@ const sheet = drawnPlane(44, 28, 110, (ctx) => {
 }, -0.012);
 
 const LABELS = [
-  ['DORMITÓRIO 01', 726, 279], ['BANHO', 499, 330], ['SALA', 789, 562],
-  ['COZINHA', 538, 687], ['A.S.', 538, 880], ['DORMITÓRIO 02', 789, 820],
+  ['DORMITÓRIO 01', 726, 279, 'dorm1'], ['BANHO', 499, 330, 'banho'], ['SALA', 789, 562, 'sala'],
+  ['COZINHA', 538, 687, 'cozinha'], ['A.S.', 538, 880, 'as'], ['DORMITÓRIO 02', 789, 820, 'dorm2'],
 ];
+// Floor area under each name, from the room's rectangle on the PDF.
+const AREA = Object.fromEntries(ROOMS.map((r) => [r.id, `${((r.x1 - r.x0) * (r.z1 - r.z0)).toFixed(2).replace('.', ',')} m²`]));
 const DIMS = [
   ['2.95', 726, 156], ['2.40', 880, 278, 1], ['2.39', 541, 278, 1], ['1.14', 499, 402], ['4.65', 554, 439],
   ['2.40', 931, 562, 1], ['3.54', 431, 582, 1], ['1.80', 538, 815], ['1.49', 538, 838], ['0.90', 613, 879, 1],
@@ -242,7 +256,11 @@ const planInk = drawnPlane(20, 20, 150, (ctx) => {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.font = `0.135px ${SERIF}`;
-  for (const [t, x, y] of LABELS) ctx.fillText(t, X(x), Z(y));
+  for (const [name, x, y] of LABELS) ctx.fillText(name, X(x), Z(y));
+  ctx.font = `0.085px ${MONO}`;
+  ctx.fillStyle = '#a8491f';
+  for (const [, x, y, id] of LABELS) ctx.fillText(AREA[id], X(x), Z(y) + 0.15);
+  ctx.fillStyle = INK;
   ctx.font = `0.105px ${MONO}`;
   for (const [t, x, y, vertical] of DIMS) {
     ctx.save();
@@ -311,8 +329,8 @@ const K = [
   { t: 0.5, p: pos(0.7, EYE, 0.45), l: look(1.75, 1.3, 0.2), h: 80 },
   { t: 0.5, p: pos(1.75, EYE, 0.45), l: look(1.75, 1.3, -1.4), h: 80 },
   { t: 0.7, p: pos(1.75, EYE, -0.3), l: look(2.6, 0.85, -2.5), h: 86, room: 5 },
-  { t: 0.7, p: pos(3.95, EYE, -0.42), l: look(2.5, 0.8, -2.3), h: 88 },
-  { t: 0.8, p: pos(4.0, EYE, -1.55), l: look(3.0, 1.2, -0.14), h: 80 },
+  { t: 0.7, p: pos(2.05, EYE, -0.3), l: look(3.6, 0.55, -1.7), h: 86 },
+  { t: 0.8, p: pos(2.32, EYE, -1.75), l: look(3.38, 1.3, -0.14), h: 80 },
   { t: 0.7, p: pos(3.95, 3.4, -0.42), l: look(2.4, 0.5, 0.2), fov: 62 },
   { t: 1.2, p: pos(9.4, 12.5, 11.2), l: look(CX - 0.9, 0.3, CZ - 0.2), fov: 30 },
 ];
@@ -378,38 +396,88 @@ ROOMS.forEach((room, i) => {
   shared.uSweep.value[i].set(room.door[0], room.door[1], 0);
 });
 
-function renderAt(u) {
+// Pose of the camera at a point of the walk: position, the point it looks at, vertical fov.
+function poseAt(u, out) {
   const n = K.length - 1;
   const i = Math.min(Math.floor(u), n - 1), f = u - i;
-  pathP.getPoint(u / n, camera.position);
-  const target = lookTarget(u, n, camera.position);
+  pathP.getPoint(u / n, out.pos);
+  out.target.copy(lookTarget(u, n, out.pos));
   // Look around: the viewer's drag turns the head a little around the scripted direction.
   if (gaze.yaw || gaze.pitch) {
-    const dir = target.clone().sub(camera.position);
+    const dir = out.target.clone().sub(out.pos);
     const len = dir.length(), yaw = Math.atan2(dir.x, dir.z) + gaze.yaw;
     const pitch = Math.max(-1.3, Math.min(1.3, Math.asin(Math.max(-1, Math.min(1, dir.y / len))) + gaze.pitch));
-    target.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)).multiplyScalar(len).add(camera.position);
+    out.target.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)).multiplyScalar(len).add(out.pos);
   }
   // Fit the sheet on any screen at the top of the page.
   const aspect = innerWidth / innerHeight;
   const fit = Math.max(1, 0.82 / Math.max(aspect, 0.01));
   const planFactor = 1 - band(u, 0, 0.6);
-  camera.position.y *= 1 + (fit - 1) * planFactor;
-  camera.fov = keyFov(K[i], aspect) + (keyFov(K[i + 1], aspect) - keyFov(K[i], aspect)) * f;
-  camera.lookAt(target);
+  out.pos.y *= 1 + (fit - 1) * planFactor;
+  out.fov = keyFov(K[i], aspect) + (keyFov(K[i + 1], aspect) - keyFov(K[i], aspect)) * f;
+  return out;
+}
+const pose = { pos: new THREE.Vector3(), target: new THREE.Vector3(), fov: 60 };
+const revealAt = (u, r) => 7 * smooth(band(u, REVEAL_FROM[r], REVEAL_FROM[r] + 1.0));
+
+// Jumping between rooms from the index or the stop bar: the camera rises out of the room to a
+// bird's-eye view of the plan, walls cut at 1.20 m with the room names on the floor, and dives
+// into the next room, like turning to another page of the drawing set.
+const fly = { on: false, k: 0, toU: 0, fromU: 0, from: { pos: new THREE.Vector3(), target: new THREE.Vector3(), fov: 60 } };
+const top = { pos: new THREE.Vector3(), target: new THREE.Vector3(), fov: 42 };
+const easeOut = (t) => 1 - (1 - t) ** 2, easeIn = (t) => t ** 2;
+function flyBlend(out) {
+  const aspect = innerWidth / innerHeight, fit = Math.max(1, 1.05 / Math.max(aspect, 0.01));
+  top.pos.set(CX + 0.5, 9.5 * fit, CZ + 4.6 * fit);
+  top.target.set(CX, 0, CZ + 0.4);
+  const k = fly.k, up = k < 0.5;
+  const a = up ? fly.from : top, b = up ? top : { pos: out.pos.clone(), target: out.target.clone(), fov: out.fov };
+  const t = up ? band(k, 0, 0.5) : band(k, 0.5, 1);
+  // Straight up out of the room first, then across; across first on the way down, then straight in.
+  const across = smooth(t), height = up ? easeOut(t) : easeIn(t);
+  out.pos.set(a.pos.x + (b.pos.x - a.pos.x) * across, a.pos.y + (b.pos.y - a.pos.y) * height, a.pos.z + (b.pos.z - a.pos.z) * across);
+  out.target.lerpVectors(a.target, b.target, smooth(up ? band(k, 0, 0.35) : band(k, 0.62, 1)));
+  out.fov = a.fov + (b.fov - a.fov) * across;
+  // How much of the plan is showing: walls cut low and room names on the floor at the top.
+  return up ? smooth(band(k, 0.04, 0.32)) : 1 - smooth(band(k, 0.68, 0.96));
+}
+
+function renderAt(u) {
+  poseAt(u, pose);
+  const lift = fly.on ? flyBlend(pose) : 0;
+  camera.position.copy(pose.pos);
+  camera.fov = pose.fov;
+  camera.lookAt(pose.target);
   camera.updateProjectionMatrix();
 
-  shared.uCut.value = 1.2 + (CEILING + 0.002 - 1.2) * smooth(band(u, 0.18, 1.35));
-  planInk.material.opacity = 1 - band(u, 0.12, 0.6);
+  shared.uCut.value = 1.2 + (CEILING + 0.002 - 1.2) * smooth(band(u, 0.18, 1.35)) * (1 - lift);
+  planInk.material.opacity = Math.max(1 - band(u, 0.12, 0.6), lift);
   planInk.visible = planInk.material.opacity > 0.001;
 
   // Opens while the camera stands outside, closes behind it: open, it would block the bathroom door, as the plan shows.
   apartment.entryLeaf.rotation.y = (Math.PI / 2) * smooth(band(u, 1.6, 2.5)) * (1 - smooth(band(u, 3.2, 4.1)));
 
   ROOMS.forEach((room, r) => {
-    const reach = 7 * smooth(band(u, REVEAL_FROM[r], REVEAL_FROM[r] + 1.0));
+    let reach = revealAt(u, r);
+    // In flight, rooms seen on the way out stay drawn until the top, then follow the new place.
+    if (fly.on) reach = revealAt(fly.fromU, r) + (reach - revealAt(fly.fromU, r)) * smooth(band(fly.k, 0.45, 0.8));
     shared.uSweep.value[r].z = reach;
   });
+
+  // Depth of field at rest on a stop inside the rooms.
+  if (dof) {
+    let amount = 0, focus = 2;
+    if (!fly.on && u > 2.8 && u < OUT_KEY - 0.4) {
+      for (const [key] of STOPS) {
+        const near = 1 - smooth(band(Math.abs(u - key), 0.04, 0.32));
+        if (near > amount) { amount = near; focus = K[key].p.distanceTo(K[key].l); }
+      }
+    }
+    dof.enabled = amount > 0.02;
+    dof.camera = camera;
+    dof.uniforms.focus.value = Math.min(3.2, Math.max(1.2, focus));
+    dof.uniforms.maxblur.value = 0.006 * amount;
+  }
 
   const camY = camera.position.y, inside = camera.position.x > -0.1 && camY < 3;
   sheet.visible = !inside;
@@ -419,7 +487,7 @@ function renderAt(u) {
   const chain = composer && u >= 1.55;
   outside.visible = chain ? camY < 6 : false;
   if (!composer && camY < 6) outside.visible = true;
-  outside.userData.setMode(night, Boolean(chain));
+  outside.userData.setMode(time, Boolean(chain));
   shared.uPaper.value.copy(chain ? PAPER_LINEAR : PAPER_DIRECT);
   shared.uInk.value.copy(chain ? INK_LINEAR : INK_DIRECT);
   if (chain) {
@@ -458,13 +526,27 @@ function updateUI(u) {
     }
   }
   finale.classList.toggle('on', u > OUT_KEY + 0.55);
-  let current = STOPS[0][0];
-  for (const [key] of STOPS) if (u > key - 0.5) current = key;
-  for (const button of nav.children) button.classList.toggle('on', +button.dataset.key === current);
+  let current = 0;
+  STOPS.forEach(([key], i) => { if (u > key - 0.5) current = i; });
+  [...nav.children].forEach((button, i) => button.classList.toggle('on', i === current));
   $('progress').style.transform = `scaleX(${walk.progress()})`;
+  // Stop bar: where we are, and how far along to the next stop.
+  if (current !== shownStop) {
+    shownStop = current;
+    const T = TEXT[getLang()];
+    $('stopNum').textContent = `${T.stop} ${String(current + 1).padStart(2, '0')} / ${String(STOPS.length).padStart(2, '0')}`;
+    $('stopName').textContent = T.stops[current];
+    $('prevStop').disabled = current === 0;
+    $('nextStop').disabled = current === STOPS.length - 1;
+    $('nextStop').textContent = current < STOPS.length - 1 ? `${T.stops[current + 1]} →` : '→';
+    $('nextStop').setAttribute('aria-label', `${T.next}: ${current < STOPS.length - 1 ? T.stops[current + 1] : ''}`);
+    $('prevStop').setAttribute('aria-label', T.prev);
+  }
+  const here = STOPS[current][0], next = STOPS[current + 1]?.[0] ?? here + 1;
+  $('stopFill').style.transform = `scaleX(${clamp01((u - here) / (next - here))})`;
 }
 
-const toggle = $('furnish'), clock = $('clock');
+const toggle = $('furnish'), clock = $('times');
 function setFurnished(value) {
   furnished = value;
   apartment.furnitureGroup.visible = value;
@@ -475,13 +557,23 @@ function setFurnished(value) {
   applyLight();
 }
 toggle.onclick = () => setFurnished(!furnished);
-function setNight(value) {
-  night = value;
-  clock.textContent = value ? t('day') : t('night');
-  clock.setAttribute('aria-pressed', String(value));
+// Time of day: four buttons, like a light switch with four positions.
+const timeButtons = TIMES.map((value) => {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.onclick = () => setTime(value);
+  clock.append(b);
+  return b;
+});
+function setTime(value) {
+  time = value;
+  timeButtons.forEach((b, i) => {
+    b.classList.toggle('on', TIMES[i] === value);
+    b.setAttribute('aria-pressed', String(TIMES[i] === value));
+  });
   applyLight();
 }
-clock.onclick = () => setNight(!night);
+setTime('day');
 
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 gsap.registerPlugin(ScrollTrigger, ScrollSmoother);
@@ -497,18 +589,39 @@ K.slice(1).forEach((key, i) => walk.to(cam, { u: i + 1, duration: key.t, ease: '
 const smoother = ScrollSmoother.get();
 const STOPS = [[0, 'Planta'], [3, 'Sala'], [5, 'Cozinha'], [8, 'Jantar'], [11, 'Gamer'], [16, 'Banho'], [20, 'Dormitório 01'], [23, 'Vista']];
 const nav = $('rooms');
-nav.append(...STOPS.map(([key], index) => {
+let shownStop = -1;
+function goToStop(index) {
+  index = Math.max(0, Math.min(STOPS.length - 1, index));
+  const key = STOPS[index][0];
+  const y = key === 0 ? 0 : walk.scrollTrigger.labelToScroll(`k${key}`);
+  // From one room to another not next to it: fly over the plan. Otherwise walk there.
+  if (!reduced && !fly.on && cam.u >= insideFrom && key >= 3 && Math.abs(cam.u - key) > 1.2) {
+    fly.from.pos.copy(camera.position);
+    fly.from.target.copy(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(2).add(camera.position));
+    fly.from.fov = camera.fov;
+    fly.fromU = cam.u;
+    fly.toU = key;
+    fly.k = 0;
+    fly.on = true;
+    gaze.yaw = gaze.pitch = 0;
+    if (smoother) smoother.scrollTo(y, false);
+    else scrollTo({ top: y, behavior: 'instant' });
+    gsap.to(fly, { k: 1, duration: 2.6, ease: 'none', overwrite: true, onComplete: () => { fly.on = false; } });
+    return;
+  }
+  if (smoother) smoother.scrollTo(y, true);
+  else scrollTo({ top: y, behavior: reduced ? 'instant' : 'smooth' });
+}
+nav.append(...STOPS.map((_, index) => {
   const button = document.createElement('button');
   button.type = 'button';
   button.textContent = TEXT[getLang()].stops[index];
-  button.onclick = () => {
-    const top = key === 0 ? 0 : walk.scrollTrigger.labelToScroll(`k${key}`);
-    if (smoother) smoother.scrollTo(top, true);
-    else scrollTo({ top });
-  };
-  button.dataset.key = key;
+  button.onclick = () => goToStop(index);
   return button;
 }));
+$('prevStop').onclick = () => goToStop(shownStop - 1);
+$('replay').onclick = () => goToStop(0);
+$('nextStop').onclick = () => goToStop(shownStop + 1);
 
 // Plain lights until the baked light arrives (and for good if the bake is out of date), so the
 // plan shows at once and the rooms are never black while the rest loads.
@@ -563,7 +676,7 @@ function captureProbes() {
   for (const v of shared.uSweep.value) v.z = 99;
   sheet.visible = planInk.visible = false;
   apartment.ceilingGroup.visible = outside.visible = true;
-  outside.userData.setMode(night, true);
+  outside.userData.setMode(time, true);
   // LED strips are far brighter than anything else; in a reflection they turn into sparkling dots
   // on thin metal. Tone them down for the capture only.
   const glowing = [];
@@ -606,7 +719,7 @@ $('loader').hidden = true;
 
 // ---------- interaction: look around, points of interest, measuring, finishes, language ----------
 const insideFrom = 2.6;
-const ui = (el) => el?.closest?.('button, #card, #finishes, #controls, #rooms');
+const ui = (el) => el?.closest?.('button, #card, #finishes, #controls, #rooms, #stopbar, #times, #finale');
 let drag = null;
 addEventListener('pointerdown', (e) => {
   if (e.button !== 0 || ui(e.target)) return;
@@ -789,14 +902,17 @@ function applyText() {
   $('scrollHint').textContent = T.scroll;
   $('finaleTitle').textContent = T.finaleTitle;
   $('finaleText').textContent = T.finaleText;
+  $('replay').textContent = T.replay;
   $('lang').textContent = T.lang;
   $('lang').setAttribute('aria-label', T.langLabel);
   measureButton.textContent = T.measure;
   finishButton.textContent = T.finishes;
   $('cardClose').setAttribute('aria-label', T.close);
-  clock.textContent = night ? T.day : T.night;
+  timeButtons.forEach((b, i) => { b.textContent = T.times[i]; });
+  clock.setAttribute('aria-label', T.timeLabel);
   toggle.textContent = furnished ? T.empty : T.full;
   [...nav.children].forEach((b, i) => { b.textContent = T.stops[i]; });
+  shownStop = -1;
   hint.textContent = measuring ? T.measuring : T.drag;
   captionRoom = -2;
   if (openSpot !== null) showCard(openSpot);
@@ -820,26 +936,29 @@ function updateHint() {
 // The gaming room is alive: screens scroll, the neon breathes between pink and violet, cyan and blue.
 const neon = [[mats.neonPink, new THREE.Color(0xff2d95), new THREE.Color(0x9b3dff)], [mats.neonCyan, new THREE.Color(0x1fd8ff), new THREE.Color(0x2f6bff)]];
 const neonLinked = neon.map(([m]) => linked(m));
-function animateRoom(time) {
+function animateRoom(now) {
   if (cam.u < 9.5 || cam.u > 14.5) return;
-  for (const m of screens) m.userData.animate(time);
+  for (const m of screens) m.userData.animate(now);
   neon.forEach(([m, a, b], i) => {
-    const k = 0.5 + 0.5 * Math.sin(time * 0.8 + i * 1.7);
+    const k = 0.5 + 0.5 * Math.sin(now * 0.8 + i * 1.7);
     for (const target of [m, ...neonLinked[i]]) target.emissive.copy(a).lerp(b, k);
   });
 }
 
 let frozen = false;
-gsap.ticker.add((time) => {
+gsap.ticker.add((now) => {
   if (frozen) return;
   // Scrolling hands the view back to the script: the look-around offset eases out.
   if (Math.abs(cam.u - gaze.u) > 0.002 && !drag) { gaze.yaw *= 0.86; gaze.pitch *= 0.86; }
   if (Math.abs(gaze.yaw) < 1e-3) gaze.yaw = 0;
   if (Math.abs(gaze.pitch) < 1e-3) gaze.pitch = 0;
   gaze.u = cam.u;
-  animateRoom(time);
-  renderAt(cam.u);
-  updateUI(cam.u);
+  animateRoom(now);
+  // A scroll by the viewer in mid-flight hands control back to the page.
+  if (fly.on && fly.k > 0.25 && Math.abs(cam.u - fly.toU) > 0.08) { gsap.killTweensOf(fly); fly.on = false; }
+  const u = fly.on ? fly.toU : cam.u;
+  renderAt(u);
+  updateUI(u);
   updateSpots();
   updateMeasureLabel();
   updateHint();
@@ -868,8 +987,9 @@ window.tour = {
     updateMeasureLabel();
   },
   setFurnished,
-  setNight,
-  debug: () => ({ renderer, scene, camera, composer, apartment }),
+  setTime,
+  setNight: (value) => setTime(value ? 'night' : 'day'),
+  debug: () => ({ renderer, scene, camera, composer, apartment, fly, dof, renderAt, shared }),
   snapshot: () => { renderAt(cam.u); return canvas.toDataURL('image/jpeg', 0.82); },
 };
 // Tools for the Blender bake and the route check, only on a local server.

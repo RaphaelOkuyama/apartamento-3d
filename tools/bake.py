@@ -14,7 +14,8 @@ import numpy as np
 
 args = sys.argv[sys.argv.index("--") + 1:]
 SCENE, OUT, SIZE, SAMPLES = args[0], args[1], int(args[2]), int(args[3])
-VARIANTS = args[4].split(",") if len(args) > 4 else ["day_full", "night_full", "day_empty", "night_empty"]
+TIMES = ["golden", "day", "afternoon", "night"]
+VARIANTS = args[4].split(",") if len(args) > 4 else [f"{t}_{f}" for t in TIMES for f in ("full", "empty")]
 # Encoded value = (light / RANGE) ^ (1 / 2.2), which the page reads back as an sRGB texture.
 RANGE = 6.0
 os.makedirs(OUT, exist_ok=True)
@@ -171,11 +172,24 @@ sun_data = bpy.data.lights.new("sun", "SUN")
 sun_data.angle = math.radians(2.5)
 sun = bpy.data.objects.new("sun", sun_data)
 bpy.context.collection.objects.link(sun)
-direction = np.array(to_blender(13 - 2.3, 7.5 - 0.5, 4.2 - 1.0), dtype=float)
-direction /= np.linalg.norm(direction)
 sun.rotation_mode = "QUATERNION"
 from mathutils import Vector
-sun.rotation_quaternion = Vector(direction).to_track_quat("Z", "Y")
+
+# Times of day. The windows are all on the east wall (north is up on the plan), so the sun comes in
+# only in the morning: at sunrise it is low and orange and reaches the far walls, mid-morning it
+# lays patches on the floor, in the afternoon it is behind the building and only the sky lights in.
+# toward: direction to the sun in page coordinates (+x east, +y up, +z south).
+SUNS = {
+    "golden": dict(toward=(0.97, 0.12, -0.18), energy=8.0, color=(1, 0.56, 0.3), sky=(0.95, 0.66, 0.48), sky_strength=0.95, lamps=0.75),
+    "day": dict(toward=(10.7, 7.0, 3.2), energy=10.0, color=(1, 0.9, 0.76), sky=(0.62, 0.76, 1.0), sky_strength=2.1, lamps=0.55),
+    "afternoon": dict(toward=(-0.75, 0.62, 0.22), energy=4.8, color=(1, 0.88, 0.72), sky=(0.66, 0.78, 1.0), sky_strength=2.5, lamps=0.55),
+    "night": dict(toward=(0, 1, 0), energy=0, color=(1, 1, 1), sky=(0.012, 0.018, 0.04), sky_strength=1, lamps=1),
+}
+
+
+def aim_sun(toward):
+    direction = Vector(to_blender(*toward)).normalized()
+    sun.rotation_quaternion = direction.to_track_quat("Z", "Y")
 
 # Lights from the reference: recessed spots, LED under cabinets and behind the headboard, rattan pendants.
 # (x, y, z, watts, colour, group), in page coordinates. "full": only with furniture.
@@ -243,18 +257,20 @@ def select_only(ob):
 def bake(variant):
     time_of_day, furniture = variant.split("_")
     night = time_of_day == "night"
+    sky = SUNS[time_of_day]
+    aim_sun(sky["toward"])
     shown = (full, full_d) if furniture == "full" else (empty, empty_d)
     for ob in (full, empty, full_d, empty_d):
         if ob:
             ob.hide_render = ob not in shown
             ob.hide_set(ob not in shown)
-    sun_data.energy = 0 if night else 5.2
-    sun_data.color = (1, 0.9, 0.76)
-    background.inputs["Color"].default_value = (0.012, 0.018, 0.04, 1) if night else (0.62, 0.76, 1.0, 1)
-    background.inputs["Strength"].default_value = 1 if night else 2.1
+    sun_data.energy = sky["energy"]
+    sun_data.color = sky["color"]
+    background.inputs["Color"].default_value = (*sky["sky"], 1)
+    background.inputs["Strength"].default_value = sky["sky_strength"]
     for ob, tag in lamp_objects:
         # Warm artificial light stays on by day, softer: the reference is lit this way.
-        scale = {"spot": 1 if night else 0.55, "full": 1 if night else 0.6, "gamer": 1 if night else 0.7}[tag]
+        scale = 1 if night else sky["lamps"] * {"spot": 1, "full": 1.1, "gamer": 1.27}[tag]
         if tag != "spot" and furniture != "full":
             scale = 0
         ob.hide_render = scale == 0

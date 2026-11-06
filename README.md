@@ -9,10 +9,12 @@ Passeio 3D por um apartamento de 30 m², conduzido pela rolagem da página. A p�
 ## Resumo
 
 - **Planta real.** Paredes, portas, janelas, shafts e forro de gesso vêm das coordenadas vetoriais do PDF da planta (escala de 111,9 px por metro). Nada foi desenhado a olho.
-- **Móveis escritos em código.** Marcenaria, estofados, eletrodomésticos e decoração são geometria procedural em Three.js, com medidas reais: bancada a 90 cm, mesa a 76 cm, assento do sofá a 44 cm, cama a 61 cm.
-- **Luz calculada no Blender.** A iluminação é renderizada no Blender Cycles (4096 px, 512 amostras) em quatro versões: dia e noite, com e sem móveis. Superfícies planas usam um atlas de lightmap; peças curvas recebem luz por vértice.
+- **Móveis escritos em código.** Marcenaria, estofados, eletrodomésticos e decoração são geometria procedural em Three.js, com medidas reais: bancada a 90 cm, mesa a 76 cm, assento do sofá a 44 cm, cama a 60 cm. Almofadas, travesseiros e a bolsa da entrada são modelados como peças costuradas, com cantos e vincos.
+- **Luz calculada no Blender.** A iluminação é renderizada no Blender Cycles (4096 px, 512 amostras) em oito versões: nascer do sol, manhã, tarde e noite, com e sem móveis. As janelas ficam todas na parede leste, então o sol só entra de manhã: baixo e alaranjado ao nascer, em manchas no piso no meio da manhã. Superfícies planas usam um atlas de lightmap; peças curvas recebem luz por vértice.
 - **Reflexos por cômodo.** Cada cômodo captura uma imagem 360° de si mesmo depois que a luz é aplicada. Espelho, vidro, metais, geladeira, pedra e azulejo refletem o próprio cômodo, com projeção na caixa do ambiente.
 - **Rolagem com GSAP.** ScrollSmoother suaviza a rolagem e ScrollTrigger conduz a câmera por 24 paradas. As viradas usam interpolação de ângulos, então a câmera nunca gira de forma brusca.
+- **Entre cômodos pela planta.** Ao pular de um cômodo para outro, a câmera sobe até a vista da planta, com as paredes cortadas a 1,20 m e os nomes e áreas no chão, e desce no cômodo escolhido.
+- **Profundidade de campo.** Parada num ponto do passeio, a câmera foca no que está em primeiro plano e desfoca de leve o fundo.
 - **Vista da janela.** Silhuetas de prédios pintadas no céu em três camadas de distância, com janelas acesas à noite.
 - **Leve.** Texturas e mapas de luz em WebP, luz por vértice compactada em gzip. A planta aparece assim que a geometria fica pronta; luz e texturas chegam em segundo plano.
 
@@ -20,12 +22,13 @@ Passeio 3D por um apartamento de 30 m², conduzido pela rolagem da página. A p�
 
 | Ação | Como |
 |---|---|
-| Andar pelo apartamento | Role a página, ou toque num cômodo no menu à direita |
+| Andar pelo apartamento | Role a página, use a barra de paradas (← / →) ou toque num cômodo no menu à direita |
 | Olhar em volta | Arraste com o mouse; no celular, deslize para os lados |
 | Ver medidas de um móvel | Toque nos pontos **+** que aparecem nos móveis |
 | Medir qualquer distância | **Medir**, depois toque em dois pontos |
 | Trocar acabamentos | **Acabamentos**: sofá, piso, armários, madeira dos painéis, paredes, meia-parede, bancadas, roupa de cama, cortinas e cadeiras |
-| Dia e noite, com e sem móveis | Botões no canto inferior |
+| Hora do dia | Nascer do sol, Manhã, Tarde ou Noite, no canto superior |
+| Com e sem móveis | Botão no canto inferior |
 | Mudar o idioma | **EN** / **PT** |
 
 ## Galeria
@@ -55,7 +58,7 @@ flowchart LR
 1. `site/src/plan.js` guarda a geometria medida no PDF.
 2. `site/src/build.js` monta paredes, portas, forros e esquadrias; `site/src/furnish.js` monta os móveis.
 3. A própria página calcula as coordenadas do atlas de luz (`lightmapuv.js`) e exporta a cena para o Blender.
-4. `tools/bake.py` renderiza a luz das quatro versões; `tools/pack_lightmaps.py` converte o resultado para a web.
+4. `tools/bake.py` renderiza a luz das oito versões; `tools/pack_lightmaps.py` converte o resultado para a web.
 5. `site/src/main.js` aplica a luz, captura os reflexos de cada cômodo e conduz a câmera pela rolagem.
 
 ## Rodar localmente

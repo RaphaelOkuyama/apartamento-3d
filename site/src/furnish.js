@@ -60,6 +60,40 @@ export function furnish(group, models, { box, cylinder, floorPatch, metresUV, ga
     return tube;
   }
 
+  // A stuffed pillow, sewn from two panels: thickest in the middle, pinched to nothing at the seam,
+  // sides drawn in by the filling, corners pointed, a few creases where the fabric gathers.
+  // Built facing +z, w wide and h tall; `taper` narrows the top (a bag), `sag` drops the middle.
+  function pillow(cx, cy, cz, w, h, t, material, { tiltX = 0, turnY = 0, roll = 0, seed = 1, taper = 0, sag = 0, noCollide = true } = {}) {
+    const nu = 28, nv = Math.max(12, Math.round((nu * h) / w));
+    const faces = [];
+    for (const side of [1, -1]) {
+      const g = new THREE.PlaneGeometry(1, 1, nu, nv);
+      const P = g.attributes.position;
+      for (let i = 0; i < P.count; i++) {
+        const u = P.getX(i) * 2, v = P.getY(i) * 2;
+        const body = ((1 - u * u) * (1 - v * v)) ** 0.42;
+        const crease = 0.05 * (u * v) ** 2 * Math.sin(Math.atan2(v, u) * 9 + seed) + 0.012 * Math.sin(u * 7 + seed) * Math.cos(v * 5 - seed);
+        const inset = 1 - 0.07 * (1 - v * v) - taper * (v + 1) / 2;
+        const x = (u * w) / 2 * inset * (1 - 0.06 * (1 - u * u));
+        const y = (v * h) / 2 * (1 - 0.07 * (1 - u * u)) - sag * h * (1 - u * u) * (1 - v * v) * 0.15;
+        P.setXYZ(i, x, y, side * ((t / 2) * body * (1 + crease)));
+      }
+      faces.push(g);
+    }
+    // The back panel faces away: flip its winding so it is lit from outside.
+    const back = faces[1], idx = back.index.array;
+    for (let i = 0; i < idx.length; i += 3) { const a = idx[i + 1]; idx[i + 1] = idx[i + 2]; idx[i + 2] = a; }
+    const g = mergeGeometries(faces.map((f) => { f.deleteAttribute('uv'); f.deleteAttribute('normal'); return f; }));
+    g.computeVertexNormals();
+    const mesh = new THREE.Mesh(g, material);
+    mesh.position.set(cx, cy, cz);
+    mesh.rotation.set(tiltX, turnY, roll, 'YXZ');
+    metresUV(mesh);
+    mesh.userData = { noEdges: true, noCollide };
+    group.add(mesh);
+    return mesh;
+  }
+
   // Ribbed wood panels. axis: which way the panel runs. Slats merge into one mesh.
   function ripado(axis, a0, a1, y0, y1, face, depth, material = mats.ripado) {
     const parts = [];
@@ -226,8 +260,16 @@ export function furnish(group, models, { box, cylinder, floorPatch, metresUV, ga
     hook.rotation.x = Math.PI / 2;
     hook.position.set(x, 1.56, ent.z1 - 0.02);
   }
-  softBox([0.36, 0.56], [1.0, 1.36], [ent.z1 - 0.1, ent.z1 - 0.02], mats.cream, { puff: 0.02, round: 3, seed: 21, noCollide: true });
-  box(group, [0.43, 0.45], [1.3, 1.56], [ent.z1 - 0.05, ent.z1 - 0.04], mats.cream, { noEdges: true, noCollide: true });
+  // Tote bag on the hook: a soft body narrowing to the opening, two handles over the hook.
+  pillow(0.45, 1.16, ent.z1 - 0.07, 0.36, 0.34, 0.09, mats.pillowTan, { taper: 0.12, sag: 0.3, seed: 21, roll: 0.03 });
+  for (const dz of [-0.035, 0.035]) {
+    const z = ent.z1 - 0.07 + dz * 0.6;
+    const handle = new THREE.CatmullRomCurve3([[0.36, 1.31, z], [0.39, 1.47, z], [0.44, 1.575, ent.z1 - 0.05], [0.49, 1.47, z], [0.53, 1.31, z]].map((q) => new THREE.Vector3(...q)));
+    const mesh = new THREE.Mesh(new THREE.TubeGeometry(handle, 40, 0.007, 8), mats.pillowTan);
+    metresUV(mesh);
+    mesh.userData = { noEdges: true, noCollide: true };
+    group.add(mesh);
+  }
   plate(0.36, 0.91, ent.z0 + 0.12, 0.07);
 
   // Fridge tower beside it: black fridge, cream cabinet above.
@@ -499,9 +541,10 @@ export function furnish(group, models, { box, cylinder, floorPatch, metresUV, ga
   softBox([s.x0, s.x1], [0.44, 0.7], [0.05, 0.24], mats.sofaFabric, { puff: 0.012, round: 7, seed: 54, noCollide: true });
   softBox([s.x0 + 0.18, 3.36], [0.44, 0.88], [0.2, 0.42], mats.sofaFabric, { puff: 0.04, round: 4, seed: 55, noCollide: true }).rotation.x = -0.12;
   softBox([3.34, s.chaise - 0.02], [0.44, 0.88], [0.2, 0.42], mats.sofaFabric, { puff: 0.04, round: 4, seed: 56, noCollide: true }).rotation.x = -0.12;
-  softBox([3.02, 3.4], [0.46, 0.84], [0.4, 0.52], mats.pillowTan, { puff: 0.035, round: 6, seed: 57, noCollide: true }).rotation.y = 0.12;
-  softBox([3.38, 3.76], [0.46, 0.84], [0.4, 0.52], mats.pillowTan, { puff: 0.035, round: 6, seed: 58, noCollide: true }).rotation.y = -0.1;
-  softBox([2.8, 3.1], [0.46, 0.76], [0.38, 0.48], mats.pillowGreen, { puff: 0.035, round: 6, seed: 59, noCollide: true }).rotation.y = 0.2;
+  // Throw pillows leaning on the back cushions, 45 and 40 cm, slightly turned.
+  pillow(3.21, 0.66, 0.48, 0.44, 0.42, 0.17, mats.pillowTan, { tiltX: -0.28, turnY: 0.12, roll: 0.04, seed: 57 });
+  pillow(3.58, 0.66, 0.48, 0.44, 0.42, 0.17, mats.pillowTan, { tiltX: -0.3, turnY: -0.1, roll: -0.05, seed: 58 });
+  pillow(2.95, 0.63, 0.45, 0.38, 0.36, 0.15, mats.pillowGreen, { tiltX: -0.26, turnY: 0.22, roll: 0.08, seed: 59 });
   // Beige lower wall with a rounded top corner at its west end.
   const paint = new THREE.Shape();
   paint.moveTo(0, 0); paint.lineTo(2.5, 0); paint.lineTo(2.5, 1.22); paint.lineTo(0.42, 1.22);
@@ -668,19 +711,25 @@ export function furnish(group, models, { box, cylinder, floorPatch, metresUV, ga
   box(group, [ward.x1, d.x1], [1.12, 1.74], [wallZ, wallZ + 0.012], mats.panelCream, { noEdges: true, noCollide: true });
   box(group, [ward.x1 + 0.02, d.x1 - 0.02], [1.121, 1.127], [wallZ + 0.03, wallZ + 0.05], mats.ledWarm, { noEdges: true, noCollide: true });
 
-  // Double bed, head against that wall, between the wardrobe and the window.
-  const bed = { x0: 2.34, x1: 3.78, z0: wallZ + 0.05, z1: wallZ + 1.98 };
-  box(group, [bed.x0, bed.x1], [0.06, 0.38], [bed.z0, bed.z1], mats.whiteTop, { noEdges: true });
-  softBox([bed.x0 + 0.01, bed.x1 - 0.01], [0.38, 0.61], [bed.z0 + 0.01, bed.z1 - 0.01], mats.linenWhite, { puff: 0.012, seed: 7, piping: true });
-  // Thick quilted duvet over the lower two thirds, falling over the sides and the foot.
-  softBox([bed.x0 - 0.06, bed.x1 + 0.06], [0.3, 0.73], [bed.z0 + 0.62, bed.z1 + 0.07], mats.duvet, { puff: 0.06, quilt: 0.34, round: 5, wrinkle: 0.01, seed: 8, noCollide: true });
-  softBox([bed.x0 + 0.02, bed.x1 - 0.02], [0.61, 0.71], [bed.z0 + 0.45, bed.z0 + 0.75], mats.duvet, { puff: 0.05, quilt: 0.3, round: 4, seed: 18, noCollide: true });
+  // Double bed against the window wall: nothing between bed and wall, so the free side, about
+  // 95 cm in front of the wardrobe, is the way in, and about 40 cm stays clear at the foot.
+  const bed = { x1: d.x1 - 0.01, z0: wallZ + 0.05 };
+  bed.x0 = bed.x1 - 1.44;
+  bed.z1 = bed.z0 + 1.93;
+  // Upholstered base on a recessed dark plinth, then a white mattress with piping, clearly apart.
+  box(group, [bed.x0 + 0.04, bed.x1 - 0.04], [0, 0.05], [bed.z0 + 0.04, bed.z1 - 0.04], mats.blackMetal, { noEdges: true });
+  softBox([bed.x0, bed.x1], [0.05, 0.36], [bed.z0, bed.z1], mats.creamDark, { puff: 0.006, round: 8, wrinkle: 0.002, seed: 6 });
+  softBox([bed.x0 + 0.015, bed.x1 - 0.015], [0.36, 0.6], [bed.z0 + 0.015, bed.z1 - 0.015], mats.linenWhite, { puff: 0.01, round: 7, wrinkle: 0.002, seed: 7, piping: true });
+  // Duvet over the top two thirds, draping only a hand's width down the open side and the foot,
+  // so the mattress and the base below it stay in view.
+  softBox([bed.x0 - 0.03, bed.x1 - 0.005], [0.5, 0.66], [bed.z0 + 0.62, bed.z1 + 0.03], mats.duvet, { puff: 0.018, quilt: 0.3, round: 6, wrinkle: 0.004, seed: 8, noCollide: true });
+  softBox([bed.x0 + 0.01, bed.x1 - 0.02], [0.6, 0.68], [bed.z0 + 0.45, bed.z0 + 0.75], mats.duvet, { puff: 0.02, quilt: 0.3, round: 5, seed: 18, noCollide: true });
   // Pillows: two large white, two cushions in front, one patterned.
-  softBox([bed.x0 + 0.06, bed.x0 + 0.7], [0.61, 0.93], [bed.z0 + 0.04, bed.z0 + 0.24], mats.linenWhite, { puff: 0.06, round: 5, seed: 9, noCollide: true }).rotation.x = 0.35;
-  softBox([bed.x1 - 0.7, bed.x1 - 0.06], [0.61, 0.93], [bed.z0 + 0.04, bed.z0 + 0.24], mats.linenWhite, { puff: 0.06, round: 5, seed: 10, noCollide: true }).rotation.x = 0.35;
-  softBox([bed.x0 + 0.2, bed.x0 + 0.68], [0.63, 0.89], [bed.z0 + 0.22, bed.z0 + 0.36], mats.creamDark, { puff: 0.045, round: 5, seed: 11, noCollide: true }).rotation.x = 0.3;
-  softBox([bed.x1 - 0.68, bed.x1 - 0.2], [0.63, 0.89], [bed.z0 + 0.22, bed.z0 + 0.36], mats.creamDark, { puff: 0.045, round: 5, seed: 12, noCollide: true }).rotation.x = 0.3;
-  softBox([(bed.x0 + bed.x1) / 2 - 0.22, (bed.x0 + bed.x1) / 2 + 0.22], [0.66, 0.85], [bed.z0 + 0.34, bed.z0 + 0.46], mats.linenWhite, { puff: 0.035, round: 6, seed: 13, noCollide: true }).rotation.x = 0.25;
+  pillow(bed.x0 + 0.38, 0.8, bed.z0 + 0.16, 0.66, 0.46, 0.17, mats.linenWhite, { tiltX: -0.55, roll: 0.02, seed: 9 });
+  pillow(bed.x1 - 0.38, 0.8, bed.z0 + 0.16, 0.66, 0.46, 0.17, mats.linenWhite, { tiltX: -0.5, roll: -0.03, seed: 10 });
+  pillow(bed.x0 + 0.42, 0.81, bed.z0 + 0.32, 0.5, 0.42, 0.15, mats.creamDark, { tiltX: -0.32, turnY: 0.06, seed: 11 });
+  pillow(bed.x1 - 0.42, 0.81, bed.z0 + 0.32, 0.5, 0.42, 0.15, mats.creamDark, { tiltX: -0.3, turnY: -0.06, seed: 12 });
+  pillow((bed.x0 + bed.x1) / 2, 0.83, bed.z0 + 0.45, 0.44, 0.3, 0.13, mats.linenWhite, { tiltX: -0.2, roll: 0.03, seed: 13 });
   // Breakfast tray with two cups, plates and a small vase.
   const tx = (bed.x0 + bed.x1) / 2 + 0.12, tz = bed.z0 + 1.05, ty = 0.77;
   box(group, [tx - 0.27, tx + 0.27], [ty + 0.13, ty + 0.15], [tz - 0.17, tz + 0.17], mats.oak, { radius: 0.003, noCollide: true });
@@ -691,11 +740,12 @@ export function furnish(group, models, { box, cylinder, floorPatch, metresUV, ga
   cup(tx + 0.13, ty + 0.165, tz);
   place('ceramic_vase_01', tx, ty + 0.15, tz - 0.08, { scale: 0.28 });
 
-  // Floating nightstands on both sides, a lamp-bottle and books.
-  for (const [a, b] of [[ward.x1 + 0.03, bed.x0 - 0.04], [bed.x1 + 0.04, bed.x1 + 0.3]]) box(group, [a, b], [0.6, 0.63], [wallZ + 0.03, wallZ + 0.4], mats.oakPale, { noCollide: true });
-  cylinder(group, (ward.x1 + bed.x0) / 2, 0.63, 0.82, wallZ + 0.16, 0.05, 0.055, mats.cabinetCream, { noCollide: true, noEdges: true });
-  box(group, [bed.x1 + 0.07, bed.x1 + 0.27], [0.63, 0.66], [wallZ + 0.08, wallZ + 0.26], mats.linenWhite, { noCollide: true });
-  box(group, [bed.x1 + 0.08, bed.x1 + 0.26], [0.66, 0.68], [wallZ + 0.09, wallZ + 0.25], mats.creamDark, { noCollide: true });
+  // One floating nightstand on the free side, at the head: a lamp and two books.
+  const ns = [bed.x0 - 0.44, bed.x0 - 0.04];
+  box(group, ns, [0.6, 0.63], [wallZ + 0.03, wallZ + 0.4], mats.oakPale, { noCollide: true });
+  cylinder(group, ns[0] + 0.12, 0.63, 0.82, wallZ + 0.16, 0.05, 0.055, mats.cabinetCream, { noCollide: true, noEdges: true });
+  box(group, [ns[0] + 0.2, ns[0] + 0.38], [0.63, 0.66], [wallZ + 0.08, wallZ + 0.26], mats.linenWhite, { noCollide: true });
+  box(group, [ns[0] + 0.21, ns[0] + 0.37], [0.66, 0.68], [wallZ + 0.09, wallZ + 0.25], mats.creamDark, { noCollide: true });
 
   // Wardrobe along the west wall, from just past the door swing to the corner wardrobe:
   // one continuous run of doors from the door to the cabinets over the bed, no open shelves.
@@ -711,24 +761,25 @@ export function furnish(group, models, { box, cylinder, floorPatch, metresUV, ga
   }
   box(group, [wx1 - 0.02, wx1 + 0.002], [GESSO - 0.004, GESSO], [ward.z1, wz0], mats.cabinetCream, { noEdges: true, noCollide: true });
 
-  // A 65-inch TV on the wall facing the bed, beside the door, on a ribbed oak panel with a floating rack.
-  const tvWall = d.z1, tvX = (bed.x0 + bed.x1) / 2, tvW = 1.44, tvH = 0.81, tvY = 1.0;
-  box(group, [tvX - 0.86, tvX + 0.86], [0.08, 2.1], [tvWall - 0.025, tvWall], mats.oakPale, { noCollide: true });
-  ripado('x', tvX - 0.86, tvX + 0.86, 0.08, 2.1, tvWall - 0.025, -0.012);
+  // A 65-inch TV on the wall facing the bed, beside the door, on a ribbed oak panel. No rack:
+  // the foot of the bed needs that floor to walk past. A slim shelf under the screen instead.
+  const tvWall = d.z1, tvX = 3.38, tvW = 1.44, tvH = 0.81, tvY = 1.05;
+  box(group, [tvX - 0.78, tvX + 0.78], [0.08, 2.1], [tvWall - 0.025, tvWall], mats.oakPale, { noCollide: true });
+  ripado('x', tvX - 0.78, tvX + 0.78, 0.08, 2.1, tvWall - 0.025, -0.012);
   box(group, [tvX - tvW / 2 - 0.006, tvX + tvW / 2 + 0.006], [tvY - 0.006, tvY + tvH + 0.006], [tvWall - 0.075, tvWall - 0.045], mats.blackMetal, { radius: 0.004, noCollide: true });
   box(group, [tvX - tvW / 2, tvX + tvW / 2], [tvY, tvY + tvH], [tvWall - 0.077, tvWall - 0.075], mats.screen, { noEdges: true, noCollide: true });
   box(group, [tvX - tvW / 2 + 0.03, tvX + tvW / 2 - 0.03], [tvY - 0.012, tvY - 0.008], [tvWall - 0.06, tvWall - 0.05], mats.ledWarm, { noEdges: true, noCollide: true });
-  roundedSlab(tvX - 0.68, tvX + 0.68, tvWall - 0.34, tvWall - 0.037, 0.36, 0.52, 0.06, mats.cabinetCream);
-  roundedSlab(tvX - 0.69, tvX + 0.69, tvWall - 0.35, tvWall - 0.037, 0.52, 0.545, 0.07, mats.oakPale);
-  place('ceramic_vase_04', tvX + 0.5, 0.545, tvWall - 0.2, { scale: 0.45 });
-  box(group, [tvX - 0.58, tvX - 0.34], [0.545, 0.575], [tvWall - 0.26, tvWall - 0.1], mats.printStripe, { noCollide: true });
+  roundedSlab(tvX - 0.6, tvX + 0.6, tvWall - 0.16, tvWall - 0.037, 0.86, 0.885, 0.04, mats.oakPale);
+  box(group, [tvX - 0.58, tvX + 0.58], [0.855, 0.86], [tvWall - 0.14, tvWall - 0.12], mats.ledWarm, { noEdges: true, noCollide: true });
+  place('ceramic_vase_04', tvX + 0.48, 0.885, tvWall - 0.1, { scale: 0.4 });
+  box(group, [tvX - 0.56, tvX - 0.36], [0.885, 0.91], [tvWall - 0.14, tvWall - 0.05], mats.printStripe, { noCollide: true });
 
-  // Rug at the foot of the bed and curtains on the window wall.
-  box(group, [bed.x0 - 0.15, bed.x1 + 0.15], [0.003, 0.012], [bed.z1 - 0.05, bed.z1 + 0.5], mats.seagrass, { noEdges: true, noCollide: true });
+  // Rug on the free side of the bed, and a roller blind inside the window frame (a curtain would
+  // have to hang between the bed and the wall).
+  box(group, [d.x0 + 0.6, bed.x0 - 0.03], [0.003, 0.012], [bed.z0 + 0.5, bed.z1], mats.seagrass, { noEdges: true, noCollide: true });
   const w0 = WINDOWS[0];
-  curtain(d.x1 - 0.08, w0.z0 - 0.3, w0.z0 + 0.1, mats.curtain);
-  curtain(d.x1 - 0.08, w0.z1 - 0.08, w0.z1 + 0.32, mats.curtain);
-  curtain(d.x1 - 0.04, w0.z0 + 0.06, w0.z1 - 0.04, mats.sheer);
+  box(group, [w0.x0 - 0.07, w0.x0 - 0.02], [WINDOW_HEAD - 0.1, WINDOW_HEAD], [w0.z0 + 0.02, w0.z1 - 0.02], mats.blind, { noCollide: true });
+  box(group, [w0.x0 - 0.05, w0.x0 - 0.045], [1.62, WINDOW_HEAD - 0.1], [w0.z0 + 0.03, w0.z1 - 0.03], mats.blind, { noEdges: true, noCollide: true });
   spot((bed.x0 + bed.x1) / 2, -1.25, CEILING);
 
   // ---------- Quarto gamer ----------

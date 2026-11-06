@@ -50,6 +50,9 @@ body { font:15px/1.45 Georgia, "Times New Roman", serif; }
 #finale.on { opacity:1; transform:none; }
 #finale h2 { margin:0 0 6px; font-weight:400; font-size:clamp(22px,3vw,30px); line-height:1.15; }
 #finale p { margin:0; font-size:14px; }
+#replay { margin-top:12px; min-height:40px; padding:0 12px; border:0; border-radius:3px; background:var(--ink); color:var(--paper); cursor:pointer; pointer-events:auto; }
+#replay:hover, #replay:focus-visible { background:var(--accent); outline:none; }
+#finale:not(.on) #replay { pointer-events:none; }
 #controls button.on { background:var(--accent); }
 #spots { position:fixed; inset:0; pointer-events:none; z-index:6; }
 .spot { position:absolute; left:0; top:0; width:28px; height:28px; margin:-14px 0 0 -14px; border-radius:50%; border:2px solid var(--paper); background:rgba(23,24,26,.62); color:var(--paper); font:600 16px/1 Consolas, "Courier New", monospace; cursor:pointer; pointer-events:auto; display:grid; place-items:center; transition:opacity .25s, transform .25s; box-shadow:0 0 0 0 rgba(241,237,226,.55); animation:pulse 2.4s infinite; }
@@ -69,8 +72,26 @@ body { font:15px/1.45 Georgia, "Times New Roman", serif; }
 #measureLabel { position:fixed; z-index:7; left:0; top:0; padding:4px 8px; background:var(--ink); color:var(--paper); pointer-events:none; transform:translate(-50%,-140%); }
 #hint { position:fixed; z-index:6; left:50%; bottom:clamp(20px,5vh,48px); transform:translateX(-50%); padding:6px 10px; background:rgba(241,237,226,.86); pointer-events:none; transition:opacity .4s; }
 #hint.off { opacity:0; }
+#hint { bottom:calc(clamp(20px,5vh,48px) + 66px); }
+#times { position:fixed; z-index:10; top:clamp(14px,3vh,28px); right:clamp(16px,4vw,48px); display:flex; padding:3px; gap:2px; background:rgba(241,237,226,.86); border-radius:4px; }
+#times button { min-height:34px; padding:0 10px; border:0; border-radius:3px; background:none; color:var(--ink); cursor:pointer; font:12px Consolas, "Courier New", monospace; letter-spacing:.03em; }
+#times button:hover { background:rgba(23,24,26,.08); }
+#times button.on { background:var(--ink); color:var(--paper); }
+#stopbar { position:fixed; z-index:10; left:50%; bottom:clamp(20px,5vh,48px); transform:translateX(-50%); display:flex; align-items:stretch; gap:2px; padding:3px; background:rgba(23,24,26,.88); border-radius:4px; color:var(--paper); max-width:calc(100vw - 32px); }
+#stopbar button { min-height:44px; padding:0 12px; border:0; border-radius:3px; background:none; color:var(--paper); cursor:pointer; font:12px Consolas, "Courier New", monospace; letter-spacing:.03em; white-space:nowrap; }
+#stopbar button:hover:not(:disabled) { background:var(--accent); }
+#stopbar button:disabled { opacity:.35; cursor:default; }
+#stopbar button:focus-visible, #times button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+#stopInfo { display:grid; align-content:center; gap:6px; padding:0 12px; min-width:0; border-left:1px solid rgba(241,237,226,.15); border-right:1px solid rgba(241,237,226,.15); }
+#stopInfo > div:first-child { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:14px; }
+#stopNum { color:#e07a4c; font-size:11px; }
+#stopTrack { height:2px; background:rgba(241,237,226,.18); }
+#stopFill { height:100%; background:#e07a4c; transform:scaleX(0); transform-origin:left; }
 @media (orientation:portrait) { #portraitTitle { display:block; } #caption { bottom:calc(clamp(20px,5vh,48px) + 58px); right:clamp(16px,4vw,48px); } #hero { bottom:calc(clamp(20px,5vh,48px) + 58px); } }
-@media (max-width:760px) { #rooms { display:none; } #caption { bottom:auto; top:16px; } #controls { max-width:none; } #hero { bottom:calc(clamp(20px,5vh,48px) + 112px); } #finishes { bottom:calc(clamp(20px,5vh,48px) + 112px); } #hint { bottom:calc(clamp(20px,5vh,48px) + 112px); } #card { top:auto; bottom:calc(clamp(20px,5vh,48px) + 112px); } #controls button { padding:0 12px; } }
+/* The stop bar sits centred at the bottom where there is room beside the caption and the switches,
+   otherwise over the switches on the right. */
+@media (min-width:761px) and (max-width:1439px) { #stopbar { left:auto; right:clamp(16px,4vw,48px); transform:none; bottom:calc(clamp(20px,5vh,48px) + 56px); } #hint { bottom:calc(clamp(20px,5vh,48px) + 122px); } #finishes { bottom:calc(clamp(20px,5vh,48px) + 112px); } }
+@media (max-width:760px) { #stopbar { bottom:calc(clamp(20px,5vh,48px) + 112px); left:16px; right:16px; transform:none; max-width:none; } #stopInfo { flex:1; gap:4px; } #stopInfo > div:first-child { font-size:13px; } #stopNum { display:block; } #times { top:auto; right:auto; left:16px; bottom:calc(clamp(20px,5vh,48px) + 172px); } #times button { padding:0 8px; font-size:11px; } #nextStop { max-width:42vw; overflow:hidden; text-overflow:ellipsis; }  #rooms { display:none; } #caption { bottom:auto; top:16px; } #controls { max-width:none; } #hero { bottom:calc(clamp(20px,5vh,48px) + 222px); } #finishes { bottom:calc(clamp(20px,5vh,48px) + 166px); } #hint { bottom:calc(clamp(20px,5vh,48px) + 222px); } #card { top:auto; bottom:calc(clamp(20px,5vh,48px) + 222px); } #controls button { padding:0 12px; } }
 @media (max-width:560px) { #hero { max-width:60vw; } #finale p { font-size:13px; } }
 </style>
 </head>
@@ -84,13 +105,16 @@ body { font:15px/1.45 Georgia, "Times New Roman", serif; }
 <section id="finale">
   <h2 id="finaleTitle">Apartamento 02, cerca de 30 m²</h2>
   <p id="finaleText">Paredes, portas e janelas vêm da planta em PDF. Altura do teto, altura das janelas, móveis, materiais e vista são simulação.</p>
+  <button id="replay" type="button" class="mono">REFAZER O PASSEIO DESDE A PLANTA ↑</button>
 </section>
 <div id="spots" aria-hidden="false"></div>
 <div id="measureLabel" class="mono" hidden></div>
 <div id="hint" class="mono off"></div>
 <section id="card" hidden aria-live="polite"><button id="cardClose" type="button" aria-label="Fechar">×</button><h3 id="cardName"></h3><p id="cardInfo" class="mono"></p></section>
 <section id="finishes" hidden aria-label="Acabamentos"></section>
-<div id="controls"><button id="lang" type="button">EN</button><button id="measure" type="button" aria-pressed="false">Medir</button><button id="finishBtn" type="button" aria-expanded="false">Acabamentos</button><button id="clock" type="button" aria-pressed="false">Ver à noite</button><button id="furnish" type="button" aria-pressed="false">Ver sem móveis</button></div>
+<div id="controls"><button id="lang" type="button">EN</button><button id="measure" type="button" aria-pressed="false">Medir</button><button id="finishBtn" type="button" aria-expanded="false">Acabamentos</button><button id="furnish" type="button" aria-pressed="false">Ver sem móveis</button></div>
+<div id="times" role="group" aria-label="Hora do dia"></div>
+<nav id="stopbar" aria-label="Paradas"><button id="prevStop" type="button" aria-label="Parada anterior">←</button><div id="stopInfo"><div><span class="mono" id="stopNum"></span> <span id="stopName"></span></div><div id="stopTrack"><div id="stopFill"></div></div></div><button id="nextStop" type="button"></button></nav>
 <div id="smooth-wrapper"><div id="smooth-content"><div id="track"></div></div></div>
 <script src="vendor/gsap.min.js"></script>
 <script src="vendor/ScrollTrigger.min.js"></script>

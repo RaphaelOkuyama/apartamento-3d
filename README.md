@@ -2,7 +2,7 @@
 
 Passeio 3D por um apartamento de 30 m², conduzido pela rolagem da página. A página abre na planta baixa em papel, as paredes sobem do desenho e a câmera percorre sala, cozinha, área de serviço, quarto gamer, banheiro e dormitório, cômodo por cômodo.
 
-**[Ver o passeio ao vivo →](https://apartamento-3d.vercel.app)**
+**[Ver o passeio ao vivo →](https://apartamento-3d-khaki.vercel.app)**
 
 ![Sala, jantar e TV](docs/images/02-sala.jpg)
 

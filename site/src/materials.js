@@ -120,7 +120,7 @@ const loaded = new Map();
 function pbr(id, sizeMeters, { surfaceOnly = false } = {}) {
   if (loaded.has(id)) return loaded.get(id);
   const one = (suffix, srgb) => {
-    const texture = loader.load(`textures/${id}_${suffix}.jpg`);
+    const texture = loader.load(`textures/${id}_${suffix}.webp`);
     texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
     texture.repeat.setScalar(1 / sizeMeters);
     texture.anisotropy = 8;
@@ -325,6 +325,8 @@ export const mats = {
   whiteTop: standard({ ...LACQUER, color: 0xf1eee7, roughness: 0.62 }),
   fridgeBlack: standard({ ...BRUSHED, color: 0x141518, roughness: 0.95, metalness: 0.55 }),
   cream: standard({ ...LINEN, color: 0xede5d5, roughness: 1 }),
+  sofaFabric: standard({ ...LINEN, color: 0xede5d5, roughness: 1 }),
+  eucalyptus: drawing(new THREE.MeshStandardMaterial({ color: 0x7f927f, roughness: 0.7, side: THREE.DoubleSide })),
   creamDark: standard({ ...BOUCLE, color: 0xd8cbb5, roughness: 1 }),
   linenWhite: standard({ ...LINEN, color: 0xf3f0e9, roughness: 1 }),
   duvet: standard({ ...LINEN, color: 0xcfc8b8, roughness: 1 }),
@@ -364,7 +366,9 @@ export const mats = {
   showerGlass: drawing(new THREE.MeshPhysicalMaterial({ color: 0xcfe0de, transparent: true, opacity: 0.22, roughness: 0.03, metalness: 0, depthWrite: false })),
 };
 
-// Original wallpaper for the monitors, drawn in code.
+// Original wallpaper for the monitors, drawn in code. The grid scrolls towards the viewer
+// (material.userData.animate), so the screens look switched on.
+export const screens = [];
 export function monitorScreen(x0, y0, width, height, top, bottom, accent) {
   const c = document.createElement('canvas');
   c.width = 512; c.height = 300;
@@ -372,27 +376,35 @@ export function monitorScreen(x0, y0, width, height, top, bottom, accent) {
   const sky = ctx.createLinearGradient(0, 0, 0, 300);
   sky.addColorStop(0, top);
   sky.addColorStop(1, bottom);
-  ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, 512, 300);
-  ctx.fillStyle = accent;
-  ctx.beginPath();
-  ctx.arc(256, 165, 58, Math.PI, 0);
-  ctx.fill();
-  ctx.fillStyle = '#0a0b12';
-  ctx.fillRect(0, 165, 512, 135);
-  ctx.strokeStyle = accent;
-  ctx.lineWidth = 2;
-  for (let i = 0; i < 7; i++) {
-    const y = 165 + i * i * 3.2;
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(512, y); ctx.stroke();
-  }
-  for (let i = -8; i <= 8; i++) {
-    ctx.beginPath(); ctx.moveTo(256 + i * 14, 165); ctx.lineTo(256 + i * 70, 300); ctx.stroke();
-  }
+  const paint = (phase) => {
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, 512, 300);
+    ctx.fillStyle = accent;
+    ctx.beginPath();
+    ctx.arc(256, 165, 58, Math.PI, 0);
+    ctx.fill();
+    ctx.fillStyle = '#0a0b12';
+    ctx.fillRect(0, 165, 512, 135);
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 8; i++) {
+      const k = i + phase;
+      const y = 165 + k * k * 2.4;
+      if (y > 300) continue;
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(512, y); ctx.stroke();
+    }
+    for (let i = -8; i <= 8; i++) {
+      ctx.beginPath(); ctx.moveTo(256 + i * 14, 165); ctx.lineTo(256 + i * 70, 300); ctx.stroke();
+    }
+  };
+  paint(0);
   const texture = new THREE.CanvasTexture(c);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(1 / width, 1 / height);
   texture.offset.set(-x0 / width, -y0 / height);
-  return standard({ color: 0x000000, emissive: 0xffffff, emissiveMap: texture, emissiveIntensity: 1.25, roughness: 0.2 });
+  const material = standard({ color: 0x000000, emissive: 0xffffff, emissiveMap: texture, emissiveIntensity: 1.25, roughness: 0.2 });
+  material.userData.animate = (time) => { paint((time * 0.6) % 1); texture.needsUpdate = true; };
+  screens.push(material);
+  return material;
 }

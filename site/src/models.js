@@ -5,7 +5,7 @@ import { drawing, mats } from './materials.js';
 // CC0 models from Poly Haven, in site/m/. Their materials join the same paper-to-material reveal
 // and are registered in `mats`, so they take the baked light like everything else.
 // Only the ones the rooms place: every extra model was megabytes nobody saw.
-const NAMES = ['potted_plant_04', 'ceramic_vase_01', 'ceramic_vase_04', 'gaming_console'];
+const NAMES = ['potted_plant_04', 'ceramic_vase_01', 'ceramic_vase_04', 'gaming_console', 'gamepad', 'calathea_orbifolia_01', 'tea_set_01'];
 
 export async function loadModels(onProgress) {
   const manager = new THREE.LoadingManager();

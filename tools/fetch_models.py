@@ -1,6 +1,6 @@
 """Downloads CC0 models from Poly Haven into one flat folder, site/m/, to stay under Windows' path limit.
 
-Usage: fetch_models.py <site_dir>
+Usage: fetch_models.py <site_dir> [model ...]  (with no names, the list below)
 """
 import json
 import sys
@@ -19,6 +19,7 @@ def get(url):
     return urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=120).read()
 
 
+MODELS = sys.argv[2:] or MODELS
 root = Path(sys.argv[1]) / "m"
 root.mkdir(parents=True, exist_ok=True)
 total = 0

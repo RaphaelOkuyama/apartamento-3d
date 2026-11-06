@@ -359,17 +359,42 @@ export function buildOutside(scene) {
       toneMapped: false,
       uniforms: { uNight: { value: 0 }, uLinear: { value: 1 } },
       vertexShader: 'varying vec3 d; void main(){ d = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-      fragmentShader: `uniform float uNight; uniform float uLinear; varying vec3 d; void main(){
+      // The view from a high floor: three bands of tower silhouettes painted into the sky,
+      // lighter and bluer with distance, with lit windows at night.
+      fragmentShader: `uniform float uNight; uniform float uLinear; varying vec3 d;
+        float h1(float x) { return fract(sin(x * 127.1) * 43758.5453); }
+        float h2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        void main(){
         float t = clamp(d.y * 1.6 + 0.12, 0.0, 1.0);
-        vec3 c = mix(vec3(0.87,0.87,0.83), vec3(0.32,0.54,0.82), pow(t, 0.75));
-        vec3 n = mix(vec3(0.075,0.075,0.13), vec3(0.012,0.018,0.05), pow(t, 0.6));
-        c = mix(c, n, uNight);
+        vec3 sky = mix(vec3(0.87,0.87,0.83), vec3(0.32,0.54,0.82), pow(t, 0.75));
+        vec3 skyN = mix(vec3(0.075,0.075,0.13), vec3(0.012,0.018,0.05), pow(t, 0.6));
+        vec3 c = mix(sky, skyN, uNight);
+        float a = atan(d.z, d.x);
+        for (int i = 0; i < 3; i++) {
+          float fi = float(i);
+          float width = 0.035 - fi * 0.008;            // angular width of one tower
+          float cell = floor(a / width + fi * 13.0);
+          float r = h1(cell + fi * 31.0);
+          float gap = step(0.18 + fi * 0.08, r);        // some lots stay empty
+          float top = (0.006 + fi * 0.012) + h1(cell * 1.7 + fi) * (0.018 + fi * 0.028);
+          if (gap > 0.5 && d.y < top) {
+            float haze = 0.68 - fi * 0.26;               // far band fades into the sky
+            vec3 day = mix(vec3(0.46, 0.5, 0.56) + 0.12 * r, sky, haze);
+            vec3 night = mix(vec3(0.03, 0.035, 0.05), skyN, haze * 0.8);
+            vec2 w = vec2((a / width + fi * 13.0) * 9.0, d.y * (420.0 - fi * 90.0));
+            float window = step(0.3, fract(w.x)) * step(0.35, fract(w.y));
+            float lit = step(0.72, h2(floor(w) + cell)) * window;
+            night += lit * vec3(1.0, 0.78, 0.45) * (0.5 + 0.5 * h2(floor(w) * 1.3)) * (1.0 - haze * 0.6);
+            day = mix(day, day * 0.86, window * (1.0 - haze));
+            c = mix(day, night, uNight);
+          }
+        }
         // Linear when it goes through the post-processing chain, display values otherwise.
         gl_FragColor = vec4(uLinear > 0.5 ? pow(c, vec3(2.2)) * 1.5 : c, 1.0); }`,
     }),
   );
   group.add(sky);
-  // No city blocks outside: only sky and a distant ground, which read cleaner than boxes did.
+  // The city is painted in the sky shader above; the ground only fills the view straight down.
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), new THREE.MeshBasicMaterial({ color: 0x5f6159, toneMapped: false }));
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -45;

@@ -76,8 +76,19 @@ export function furnish(group, models, { box, cylinder, floorPatch, metresUV, ga
     return mesh;
   }
 
-  function place(name, x, y, z, { rotation = 0, scale = 1, noCollide = true } = {}) {
-    const object = models[name].clone(true);
+  // `pick` takes one piece from a model that ships several side by side, centred on its spot.
+  function place(name, x, y, z, { rotation = 0, scale = 1, noCollide = true, pick = null } = {}) {
+    let object = models[name].clone(true);
+    if (pick) {
+      const part = object.getObjectByName(pick);
+      const box = new THREE.Box3().setFromObject(part), centre = box.getCenter(new THREE.Vector3());
+      const holder = new THREE.Group();
+      part.position.x -= centre.x;
+      part.position.z -= centre.z;
+      part.position.y -= box.min.y;
+      holder.add(part);
+      object = holder;
+    }
     object.position.set(x, y, z);
     object.rotation.y = rotation;
     object.scale.setScalar(scale);
@@ -398,7 +409,44 @@ export function furnish(group, models, { box, cylinder, floorPatch, metresUV, ga
   const table = { x0: 1.42, x1: 2.38, z0: 1.1, z1: 1.84 };
   roundedSlab(table.x0, table.x1, table.z0, table.z1, 0.735, 0.765, 0.24, mats.whiteTop);
   lathe([[0.25, 0], [0.25, 0.015], [0.15, 0.4], [0.11, 0.735], [0, 0.735]], (table.x0 + table.x1) / 2, 0, (table.z0 + table.z1) / 2, mats.oakPale, { noCollide: false });
-  place('ceramic_vase_01', 1.9, 0.765, 1.47, { scale: 0.8 });
+  place('ceramic_vase_01', 2.18, 0.765, 1.32, { scale: 0.7 });
+  place('tea_set_01', 1.82, 0.765, 1.5, { scale: 0.62, rotation: 0.2 });
+  // Eucalyptus branches in the vase, as in the reference photo: arching stems, round leaves in pairs.
+  {
+    const vx = 2.18, vz = 1.32, vy = 0.765 + 0.25;
+    const stems = [], leaves = [];
+    let seed = 3;
+    const rand = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+    for (let s = 0; s < 6; s++) {
+      const heading = (s / 6) * Math.PI * 2 + rand() * 0.6, lean = 0.35 + rand() * 0.35, length = 0.42 + rand() * 0.18;
+      const pts = [];
+      for (let k = 0; k <= 8; k++) {
+        const u = k / 8, out = Math.sin(lean) * length * u * (0.6 + 0.4 * u), up = Math.cos(lean) * length * u - 0.12 * u * u * length;
+        pts.push(new THREE.Vector3(vx + Math.cos(heading) * out, vy + up, vz + Math.sin(heading) * out));
+      }
+      const curve = new THREE.CatmullRomCurve3(pts);
+      stems.push(new THREE.TubeGeometry(curve, 16, 0.0025, 5));
+      for (let k = 2; k < 15; k++) {
+        const u = k / 15, at = curve.getPoint(u), tangent = curve.getTangent(u), size = 0.028 * (1.1 - u * 0.5);
+        for (const side of [-1, 1]) {
+          const leaf = new THREE.CircleGeometry(size, 10);
+          leaf.scale(1, 0.82, 1);
+          leaf.rotateX(-Math.PI / 2 + (rand() - 0.5) * 0.9);
+          leaf.rotateY(heading + side * Math.PI / 2 + (rand() - 0.5) * 0.6);
+          leaf.translate(at.x + side * 0.02 * -tangent.z, at.y, at.z + side * 0.02 * tangent.x);
+          leaves.push(leaf);
+        }
+      }
+    }
+    const stemMesh = new THREE.Mesh(mergeGeometries(stems), mats.oak);
+    const leafMat = mats.eucalyptus;
+    const leafMesh = new THREE.Mesh(mergeGeometries(leaves.map((g) => g.toNonIndexed())), leafMat);
+    for (const m of [stemMesh, leafMesh]) {
+      metresUV(m);
+      m.userData = { noEdges: true, noCollide: true };
+      group.add(m);
+    }
+  }
   // Two chairs: oak back with cane, black frame, beige seat.
   for (const [x, z, turn] of [[1.68, 0.9, 0], [2.12, 0.9, 0], [1.68, 2.04, Math.PI], [2.12, 2.04, Math.PI]]) {
     const before = group.children.length;
@@ -445,12 +493,12 @@ export function furnish(group, models, { box, cylinder, floorPatch, metresUV, ga
 
   // ---------- Sofa wall: modular sofa with chaise to the window, half-painted wall, four frames, LED cove ----------
   const s = { x0: 2.66, x1: 4.58, chaise: 3.86 };
-  softBox([s.x0, s.chaise], [0.08, 0.44], [0.07, 0.9], mats.cream, { puff: 0.018, round: 7, seed: 51, piping: true });
-  softBox([s.chaise, s.x1], [0.08, 0.44], [0.07, 1.62], mats.cream, { puff: 0.018, round: 7, seed: 52, piping: true });
-  softBox([s.x0 - 0.04, s.x0 + 0.16], [0.08, 0.62], [0.07, 0.9], mats.cream, { puff: 0.012, round: 7, seed: 53 });
-  softBox([s.x0, s.x1], [0.44, 0.7], [0.05, 0.24], mats.cream, { puff: 0.012, round: 7, seed: 54, noCollide: true });
-  softBox([s.x0 + 0.18, 3.36], [0.44, 0.88], [0.2, 0.42], mats.cream, { puff: 0.04, round: 4, seed: 55, noCollide: true }).rotation.x = -0.12;
-  softBox([3.34, s.chaise - 0.02], [0.44, 0.88], [0.2, 0.42], mats.cream, { puff: 0.04, round: 4, seed: 56, noCollide: true }).rotation.x = -0.12;
+  softBox([s.x0, s.chaise], [0.08, 0.44], [0.07, 0.9], mats.sofaFabric, { puff: 0.018, round: 7, seed: 51, piping: true });
+  softBox([s.chaise, s.x1], [0.08, 0.44], [0.07, 1.62], mats.sofaFabric, { puff: 0.018, round: 7, seed: 52, piping: true });
+  softBox([s.x0 - 0.04, s.x0 + 0.16], [0.08, 0.62], [0.07, 0.9], mats.sofaFabric, { puff: 0.012, round: 7, seed: 53 });
+  softBox([s.x0, s.x1], [0.44, 0.7], [0.05, 0.24], mats.sofaFabric, { puff: 0.012, round: 7, seed: 54, noCollide: true });
+  softBox([s.x0 + 0.18, 3.36], [0.44, 0.88], [0.2, 0.42], mats.sofaFabric, { puff: 0.04, round: 4, seed: 55, noCollide: true }).rotation.x = -0.12;
+  softBox([3.34, s.chaise - 0.02], [0.44, 0.88], [0.2, 0.42], mats.sofaFabric, { puff: 0.04, round: 4, seed: 56, noCollide: true }).rotation.x = -0.12;
   softBox([3.02, 3.4], [0.46, 0.84], [0.4, 0.52], mats.pillowTan, { puff: 0.035, round: 6, seed: 57, noCollide: true }).rotation.y = 0.12;
   softBox([3.38, 3.76], [0.46, 0.84], [0.4, 0.52], mats.pillowTan, { puff: 0.035, round: 6, seed: 58, noCollide: true }).rotation.y = -0.1;
   softBox([2.8, 3.1], [0.46, 0.76], [0.38, 0.48], mats.pillowGreen, { puff: 0.035, round: 6, seed: 59, noCollide: true }).rotation.y = 0.2;
@@ -469,6 +517,8 @@ export function furnish(group, models, { box, cylinder, floorPatch, metresUV, ga
   picture(3.95, 4.38, 1.34, 2.0, 0.004, 1, [0.08, 0.08, 0.22, 0.22, mats.printGreen]);
   box(group, [2.15, 4.65], [2.36, CEILING], [0, 0.22], mats.ceiling, { noEdges: true, noCollide: true });
   box(group, [2.17, 4.63], [2.355, 2.362], [0.2, 0.22], mats.ledWarm, { noEdges: true, noCollide: true });
+  // A calathea in the window corner, between the chaise and the TV console.
+  place('calathea_orbifolia_01', 4.42, 0, 1.8, { pick: 'calathea_orbifolia_01_c', scale: 1.15, rotation: 0.6 });
   // Striped oval rug.
   const rug = new THREE.Mesh(new THREE.CircleGeometry(1, 48), mats.stripeRug);
   rug.rotation.x = -Math.PI / 2;
@@ -855,6 +905,7 @@ export function furnish(group, models, { box, cylinder, floorPatch, metresUV, ga
   box(group, [g2.x0 + 0.02, g2.x0 + 0.035], [cy, cy + 0.012], [g2.z0 + 0.02, g2.z1 - 0.02], mats.neonCyan, { noEdges: true, noCollide: true });
   box(group, [3.3, g2.x1 - 0.01], [cy, cy + 0.012], [g2.z0 + 0.02, g2.z0 + 0.035], mats.neonCyan, { noEdges: true, noCollide: true });
   place('gaming_console', 3.3, deskTop, wallS - 0.14, { scale: 0.8 });
+  for (const [x, r] of [[2.2, 0.4], [4.42, -0.4]]) place('gamepad', x, deskTop, deskFront + 0.22, { scale: 0.42, rotation: r });
   const w2 = WINDOWS[2];
   // Curtains stop short of the desk, so neither falls over the PC tower at the window end.
   curtain(g2.x1 - 0.08, w2.z0 - 0.22, w2.z0 + 0.14, mats.curtainDark);

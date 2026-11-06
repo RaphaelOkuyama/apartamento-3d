@@ -2,9 +2,9 @@
 
 Passeio 3D por um apartamento de 30 m², conduzido pela rolagem da página. A página abre na planta baixa em papel, as paredes sobem do desenho e a câmera percorre sala, cozinha, área de serviço, quarto gamer, banheiro e dormitório, cômodo por cômodo.
 
-**[Ver o passeio ao vivo →](https://apartamento-3d-khaki.vercel.app)**
+**[Ver o passeio ao vivo →](https://apartamento-3d-khaki.vercel.app)** · Português e English
 
-![Sala, jantar e TV](docs/images/02-sala.jpg)
+![Passeio pela planta, sala, cozinha e quarto gamer](docs/images/passeio.gif)
 
 ## Resumo
 
@@ -13,7 +13,20 @@ Passeio 3D por um apartamento de 30 m², conduzido pela rolagem da página. A p�
 - **Luz calculada no Blender.** A iluminação é renderizada no Blender Cycles (4096 px, 512 amostras) em quatro versões: dia e noite, com e sem móveis. Superfícies planas usam um atlas de lightmap; peças curvas recebem luz por vértice.
 - **Reflexos por cômodo.** Cada cômodo captura uma imagem 360° de si mesmo depois que a luz é aplicada. Espelho, vidro, metais, geladeira, pedra e azulejo refletem o próprio cômodo, com projeção na caixa do ambiente.
 - **Rolagem com GSAP.** ScrollSmoother suaviza a rolagem e ScrollTrigger conduz a câmera por 24 paradas. As viradas usam interpolação de ângulos, então a câmera nunca gira de forma brusca.
-- **Leve.** Cerca de 17 MB no total, com texturas de 1024 px e luz por vértice compactada em gzip.
+- **Vista da janela.** Silhuetas de prédios pintadas no céu em três camadas de distância, com janelas acesas à noite.
+- **Leve.** Texturas e mapas de luz em WebP, luz por vértice compactada em gzip. A planta aparece assim que a geometria fica pronta; luz e texturas chegam em segundo plano.
+
+## O que dá para fazer na página
+
+| Ação | Como |
+|---|---|
+| Andar pelo apartamento | Role a página, ou toque num cômodo no menu à direita |
+| Olhar em volta | Arraste com o mouse; no celular, deslize para os lados |
+| Ver medidas de um móvel | Toque nos pontos **+** que aparecem nos móveis |
+| Medir qualquer distância | **Medir**, depois toque em dois pontos |
+| Trocar acabamentos | **Acabamentos**: cor do sofá, do piso e dos armários |
+| Dia e noite, com e sem móveis | Botões no canto inferior |
+| Mudar o idioma | **EN** / **PT** |
 
 ## Galeria
 
@@ -79,6 +92,8 @@ python tools/pack_lightmaps.py bake/out site/bake
 
 Use `2048 200` no lugar de `4096 512` para uma prévia em cerca de 90 segundos.
 
+As ferramentas de exportação (`tour.exportScene`, `tour.collisions`) só existem quando a página roda em `localhost`.
+
 ## Estrutura
 
 ```
@@ -86,8 +101,8 @@ site/            site estático publicado
   index.html     página, estilos e interface
   src/           código do passeio (Three.js)
   bake/          luz pré-calculada (lightmaps e luz por vértice)
-  textures/      texturas PBR do Poly Haven, reduzidas para a web
-  m/             modelos 3D do Poly Haven (vasos, planta, console)
+  textures/      texturas PBR do Poly Haven em WebP, reduzidas para a web
+  m/             modelos 3D do Poly Haven (vasos, plantas, jogo de chá, controles, console)
   vendor/        Three.js e GSAP
 tools/           servidor local, bake no Blender e utilitários de textura
 docs/images/     imagens do README

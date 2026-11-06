@@ -6,7 +6,8 @@ import { ShaderPass } from '../vendor/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from '../vendor/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from '../vendor/postprocessing/OutputPass.js';
 import { BOUNDS, CEILING, EYE, ROOMS, X, Z } from './plan.js';
-import { drawing, loadingManager, mats, shared, texturesReady } from './materials.js';
+import { drawing, loadingManager, mats, screens, shared, texturesReady } from './materials.js';
+import { FINISHES, ROOM_TEXT, SPOTS, TEXT, applyFinish, getLang, setLang, t } from './interact.js';
 import { buildApartment, buildOutside } from './build.js';
 import { loadModels } from './models.js';
 import { assignLightmapUV } from './lightmapuv.js';
@@ -21,7 +22,8 @@ try {
   $('loader').textContent = 'Este passeio precisa de WebGL, que não está disponível neste navegador.';
   throw new Error('WebGL unavailable');
 }
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+// Phones get fewer pixels: at 3x density the frame rate halves for detail nobody sees.
+renderer.setPixelRatio(Math.min(devicePixelRatio, matchMedia("(pointer: coarse)").matches ? 1.5 : 2));
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.02;
 
@@ -44,7 +46,7 @@ const outside = buildOutside(scene);
 const lightmaps = {};
 const lightmapLoader = new THREE.TextureLoader();
 const lightmapsReady = Promise.all(['day_full', 'day_empty', 'night_full', 'night_empty'].map(async (key) => {
-  const texture = await lightmapLoader.loadAsync(`bake/${key}.jpg`);
+  const texture = await lightmapLoader.loadAsync(`bake/${key}.webp`);
   texture.channel = 1;
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 4;
@@ -355,6 +357,7 @@ function lookTarget(u, n, from) {
 }
 const OUT_KEY = K.length - 2;
 const cam = { u: 0 };
+const gaze = { yaw: 0, pitch: 0, u: 0 };
 
 const smooth = (t) => t * t * (3 - 2 * t);
 const clamp01 = (t) => Math.min(1, Math.max(0, t));
@@ -380,6 +383,13 @@ function renderAt(u) {
   const i = Math.min(Math.floor(u), n - 1), f = u - i;
   pathP.getPoint(u / n, camera.position);
   const target = lookTarget(u, n, camera.position);
+  // Look around: the viewer's drag turns the head a little around the scripted direction.
+  if (gaze.yaw || gaze.pitch) {
+    const dir = target.clone().sub(camera.position);
+    const len = dir.length(), yaw = Math.atan2(dir.x, dir.z) + gaze.yaw;
+    const pitch = Math.max(-1.3, Math.min(1.3, Math.asin(Math.max(-1, Math.min(1, dir.y / len))) + gaze.pitch));
+    target.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)).multiplyScalar(len).add(camera.position);
+  }
   // Fit the sheet on any screen at the top of the page.
   const aspect = innerWidth / innerHeight;
   const fit = Math.max(1, 0.82 / Math.max(aspect, 0.01));
@@ -442,8 +452,9 @@ function updateUI(u) {
     captionRoom = room;
     caption.classList.toggle('on', room >= 0);
     if (room >= 0) {
-      $('capName').textContent = ROOMS[room].name;
-      $('capSize').textContent = ROOMS[room].size;
+      const en = getLang() === 'en' && ROOM_TEXT.en[ROOMS[room].id];
+      $('capName').textContent = en ? en[0] : ROOMS[room].name;
+      $('capSize').textContent = en ? en[1] : ROOMS[room].size;
     }
   }
   finale.classList.toggle('on', u > OUT_KEY + 0.55);
@@ -459,14 +470,14 @@ function setFurnished(value) {
   apartment.furnitureGroup.visible = value;
   apartment.furnitureLines.visible = value;
   apartment.bareGroup.visible = apartment.bareLines.visible = !value;
-  toggle.textContent = value ? 'Ver sem móveis' : 'Ver mobiliado';
+  toggle.textContent = value ? t('empty') : t('full');
   toggle.setAttribute('aria-pressed', String(!value));
   applyLight();
 }
 toggle.onclick = () => setFurnished(!furnished);
 function setNight(value) {
   night = value;
-  clock.textContent = value ? 'Ver de dia' : 'Ver à noite';
+  clock.textContent = value ? t('day') : t('night');
   clock.setAttribute('aria-pressed', String(value));
   applyLight();
 }
@@ -486,10 +497,10 @@ K.slice(1).forEach((key, i) => walk.to(cam, { u: i + 1, duration: key.t, ease: '
 const smoother = ScrollSmoother.get();
 const STOPS = [[0, 'Planta'], [3, 'Sala'], [5, 'Cozinha'], [8, 'Jantar'], [11, 'Gamer'], [16, 'Banho'], [20, 'Dormitório 01'], [23, 'Vista']];
 const nav = $('rooms');
-nav.append(...STOPS.map(([key, name]) => {
+nav.append(...STOPS.map(([key], index) => {
   const button = document.createElement('button');
   button.type = 'button';
-  button.textContent = name;
+  button.textContent = TEXT[getLang()].stops[index];
   button.onclick = () => {
     const top = key === 0 ? 0 : walk.scrollTrigger.labelToScroll(`k${key}`);
     if (smoother) smoother.scrollTo(top, true);
@@ -499,17 +510,11 @@ nav.append(...STOPS.map(([key, name]) => {
   return button;
 }));
 
-const [info] = await Promise.all([bakeReady, texturesReady]);
-if (info) {
-  lightRange = info.range;
-  bakedLight = true;
-  applyLight();
-} else {
-  scene.add(new THREE.HemisphereLight(0xfff4e6, 0x9c8a74, 1.3));
-  const sun = new THREE.DirectionalLight(0xffe2b8, 2.5);
-  sun.position.set(13, 7.5, 4.2);
-  scene.add(sun);
-}
+// Plain lights until the baked light arrives (and for good if the bake is out of date), so the
+// plan shows at once and the rooms are never black while the rest loads.
+const fallback = [new THREE.HemisphereLight(0xfff4e6, 0x9c8a74, 1.3), new THREE.DirectionalLight(0xffe2b8, 2.5)];
+fallback[1].position.set(13, 7.5, 4.2);
+scene.add(...fallback);
 // ---------- room reflections ----------
 // Each room photographs itself in 360 once the baked light is on. Shiny surfaces in that room
 // (mirror, glass, metal, the black fridge, stone and tiles) reflect that capture, projected onto
@@ -584,22 +589,266 @@ function captureProbes() {
   shared.uSweep.value.forEach((v, i) => { v.z = reach[i]; });
   [sheet.visible, planInk.visible, apartment.ceilingGroup.visible, outside.visible] = shown;
 }
-if (info) {
+Promise.all([bakeReady, texturesReady]).then(([info]) => {
+  if (!info) return;
+  lightRange = info.range;
+  bakedLight = true;
+  scene.remove(...fallback);
+  applyLight();
   setupProbes();
   captureProbes();
-}
+  // Compile the interior pipeline now, so the first step inside does not hitch.
+  if (composer) renderAt(2.2);
+});
 
-// Compile both pipelines now, so the first switch does not hitch during the walk.
-if (composer) renderAt(2.2);
 renderAt(0);
 $('loader').hidden = true;
 
+// ---------- interaction: look around, points of interest, measuring, finishes, language ----------
+const insideFrom = 2.6;
+const ui = (el) => el?.closest?.('button, #card, #finishes, #controls, #rooms');
+let drag = null;
+addEventListener('pointerdown', (e) => {
+  if (e.button !== 0 || ui(e.target)) return;
+  drag = { x: e.clientX, y: e.clientY, moved: 0, touch: e.pointerType !== 'mouse' };
+});
+addEventListener('pointermove', (e) => {
+  if (!drag || cam.u < insideFrom) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  drag.x = e.clientX; drag.y = e.clientY;
+  drag.moved += Math.abs(dx) + Math.abs(dy);
+  // On touch, vertical swipes keep scrolling the page; only sideways ones turn the head.
+  if (drag.touch && Math.abs(dy) > Math.abs(dx)) return;
+  gaze.yaw = Math.max(-1.2, Math.min(1.2, gaze.yaw - dx * 0.005));
+  if (!drag.touch) gaze.pitch = Math.max(-0.5, Math.min(0.5, gaze.pitch + dy * 0.004));
+  hint.classList.add('off');
+});
+addEventListener('pointerup', (e) => {
+  const click = drag && drag.moved < 6 && !ui(e.target);
+  drag = null;
+  if (click && measuring) measureAt(e.clientX, e.clientY);
+});
+
+// Points of interest: small markers on real pieces, a card with their sizes on tap.
+const spotLayer = $('spots'), card = $('card'), hint = $('hint');
+const raycaster = new THREE.Raycaster();
+const solids = [];
+apartment.shellGroup.traverse((m) => m.isMesh && solids.push(m));
+apartment.furnitureGroup.traverse((m) => m.isMesh && solids.push(m));
+let openSpot = null;
+const spotButtons = SPOTS.map((spot, i) => {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'spot';
+  b.textContent = '+';
+  b.hidden = true;
+  b.onclick = () => showCard(i);
+  spotLayer.append(b);
+  return b;
+});
+function showCard(i) {
+  openSpot = i;
+  const [name, info] = SPOTS[i][getLang()];
+  $('cardName').textContent = name;
+  $('cardInfo').textContent = info;
+  card.hidden = false;
+  finishPanel.hidden = true;
+  finishButton.classList.remove('on');
+}
+$('cardClose').onclick = () => { card.hidden = true; openSpot = null; };
+const p = new THREE.Vector3(), seen = new Map();
+let frame = 0;
+function updateSpots() {
+  const show = cam.u >= insideFrom && cam.u <= OUT_KEY - 0.3 && furnished && !measuring;
+  frame++;
+  SPOTS.forEach((spot, i) => {
+    const b = spotButtons[i];
+    p.fromArray(spot.pos);
+    const dist = p.distanceTo(camera.position);
+    p.project(camera);
+    const onScreen = show && p.z < 1 && Math.abs(p.x) < 0.9 && Math.abs(p.y) < 0.85 && dist < 4.2;
+    if (onScreen && frame % 6 === i % 6) {
+      // Hidden behind a wall or a cabinet? One ray, a few times a second.
+      const to = new THREE.Vector3().fromArray(spot.pos);
+      raycaster.set(camera.position, to.clone().sub(camera.position).normalize());
+      raycaster.far = dist;
+      const hit = raycaster.intersectObjects(solids, false)[0];
+      seen.set(i, !hit || hit.distance > dist - 0.35);
+    }
+    const visible = onScreen && seen.get(i) !== false;
+    b.hidden = !visible;
+    if (visible) b.style.transform = `translate(${(p.x * 0.5 + 0.5) * innerWidth}px, ${(-p.y * 0.5 + 0.5) * innerHeight}px)`;
+  });
+  if (openSpot !== null && cam.u < insideFrom) { card.hidden = true; openSpot = null; }
+}
+
+// Measuring: tap two points on any surface; the distance shows between them.
+let measuring = false;
+const marks = [], measureLabel = $('measureLabel');
+const markMaterial = new THREE.MeshBasicMaterial({ color: 0xa8491f, depthTest: false });
+const lineMaterial = new THREE.LineBasicMaterial({ color: 0xa8491f, depthTest: false });
+const measureGroup = new THREE.Group();
+measureGroup.renderOrder = 30;
+scene.add(measureGroup);
+function clearMeasure() {
+  marks.length = 0;
+  measureGroup.clear();
+  measureLabel.hidden = true;
+}
+function measureAt(x, y) {
+  if (cam.u < insideFrom) return;
+  raycaster.setFromCamera(new THREE.Vector2((x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1), camera);
+  raycaster.far = 30;
+  const hit = raycaster.intersectObjects(solids, false)[0];
+  if (!hit) return;
+  if (marks.length === 2) clearMeasure();
+  marks.push(hit.point.clone());
+  const dot = new THREE.Mesh(new THREE.SphereGeometry(0.018, 12, 8), markMaterial);
+  dot.position.copy(hit.point);
+  dot.renderOrder = 30;
+  measureGroup.add(dot);
+  if (marks.length === 2) {
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(marks), lineMaterial);
+    line.renderOrder = 30;
+    measureGroup.add(line);
+    const d = marks[0].distanceTo(marks[1]);
+    measureLabel.textContent = d < 1 ? `${Math.round(d * 100)} cm` : `${d.toFixed(2).replace('.', getLang() === 'en' ? '.' : ',')} m`;
+    measureLabel.hidden = false;
+  }
+}
+function updateMeasureLabel() {
+  if (marks.length !== 2 || measureLabel.hidden) return;
+  p.copy(marks[0]).add(marks[1]).multiplyScalar(0.5).project(camera);
+  measureLabel.style.left = `${(p.x * 0.5 + 0.5) * innerWidth}px`;
+  measureLabel.style.top = `${(-p.y * 0.5 + 0.5) * innerHeight}px`;
+}
+const measureButton = $('measure');
+measureButton.onclick = () => {
+  measuring = !measuring;
+  measureButton.classList.toggle('on', measuring);
+  measureButton.setAttribute('aria-pressed', String(measuring));
+  if (!measuring) clearMeasure();
+  hint.textContent = measuring ? t('measuring') : t('drag');
+  hint.classList.toggle('off', !measuring);
+};
+
+// Finishes: recolour the sofa, the floor and the joinery. The baked light stays valid: it is
+// light, not colour.
+const finishPanel = $('finishes'), finishButton = $('finishBtn');
+const chosen = {};
+try { Object.assign(chosen, JSON.parse(localStorage.getItem('finishes') || '{}')); } catch { /* storage may be blocked */ }
+const linked = (m) => {
+  const list = [];
+  scene.traverse((o) => { if (o.isMesh && o.material.userData?.source === m && !list.includes(o.material)) list.push(o.material); });
+  return list;
+};
+function buildFinishes() {
+  finishPanel.replaceChildren(...FINISHES.map((f) => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const label = document.createElement('div');
+    label.className = 'mono';
+    label.textContent = t(f.key).toUpperCase();
+    const swatches = document.createElement('div');
+    swatches.className = 'swatches';
+    for (const [hex, pt, en] of f.options) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'swatch';
+      b.style.background = f.key === 'floor' ? `linear-gradient(135deg, ${hex}, #b08a63)` : hex;
+      b.title = getLang() === 'en' ? en : pt;
+      b.setAttribute('aria-label', b.title);
+      b.classList.toggle('on', (chosen[f.key] ?? f.options[0][0]) === hex);
+      b.onclick = () => {
+        chosen[f.key] = hex;
+        applyFinish(f, hex, linked);
+        try { localStorage.setItem('finishes', JSON.stringify(chosen)); } catch { /* storage may be blocked */ }
+        buildFinishes();
+      };
+      swatches.append(b);
+    }
+    row.append(label, swatches);
+    return row;
+  }));
+}
+for (const f of FINISHES) if (chosen[f.key]) applyFinish(f, chosen[f.key], linked);
+finishButton.onclick = () => {
+  finishPanel.hidden = !finishPanel.hidden;
+  finishButton.setAttribute('aria-expanded', String(!finishPanel.hidden));
+  finishButton.classList.toggle('on', !finishPanel.hidden);
+  if (!finishPanel.hidden) { buildFinishes(); card.hidden = true; openSpot = null; }
+};
+
+// Language: every label on the page follows the choice.
+function applyText() {
+  const T = TEXT[getLang()];
+  $('loadText').textContent = T.loading;
+  $('scrollHint').textContent = T.scroll;
+  $('finaleTitle').textContent = T.finaleTitle;
+  $('finaleText').textContent = T.finaleText;
+  $('lang').textContent = T.lang;
+  $('lang').setAttribute('aria-label', T.langLabel);
+  measureButton.textContent = T.measure;
+  finishButton.textContent = T.finishes;
+  $('cardClose').setAttribute('aria-label', T.close);
+  clock.textContent = night ? T.day : T.night;
+  toggle.textContent = furnished ? T.empty : T.full;
+  [...nav.children].forEach((b, i) => { b.textContent = T.stops[i]; });
+  hint.textContent = measuring ? T.measuring : T.drag;
+  captionRoom = -2;
+  if (openSpot !== null) showCard(openSpot);
+  if (!finishPanel.hidden) buildFinishes();
+}
+$('lang').onclick = () => setLang(getLang() === 'en' ? 'pt' : 'en', applyText);
+document.documentElement.lang = getLang() === 'en' ? 'en' : 'pt-BR';
+applyText();
+
+// The first time the camera is inside, say once that the view can be turned.
+let hinted = false;
+function updateHint() {
+  if (!hinted && cam.u > 3 && cam.u < 3.4) {
+    hinted = true;
+    hint.textContent = t('drag');
+    hint.classList.remove('off');
+    setTimeout(() => { if (!measuring) hint.classList.add('off'); }, 3500);
+  }
+}
+
+// The gaming room is alive: screens scroll, the neon breathes between pink and violet, cyan and blue.
+const neon = [[mats.neonPink, new THREE.Color(0xff2d95), new THREE.Color(0x9b3dff)], [mats.neonCyan, new THREE.Color(0x1fd8ff), new THREE.Color(0x2f6bff)]];
+const neonLinked = neon.map(([m]) => linked(m));
+function animateRoom(time) {
+  if (cam.u < 9.5 || cam.u > 14.5) return;
+  for (const m of screens) m.userData.animate(time);
+  neon.forEach(([m, a, b], i) => {
+    const k = 0.5 + 0.5 * Math.sin(time * 0.8 + i * 1.7);
+    for (const target of [m, ...neonLinked[i]]) target.emissive.copy(a).lerp(b, k);
+  });
+}
+
 let frozen = false;
-gsap.ticker.add(() => {
+gsap.ticker.add((time) => {
   if (frozen) return;
+  // Scrolling hands the view back to the script: the look-around offset eases out.
+  if (Math.abs(cam.u - gaze.u) > 0.002 && !drag) { gaze.yaw *= 0.86; gaze.pitch *= 0.86; }
+  if (Math.abs(gaze.yaw) < 1e-3) gaze.yaw = 0;
+  if (Math.abs(gaze.pitch) < 1e-3) gaze.pitch = 0;
+  gaze.u = cam.u;
+  animateRoom(time);
   renderAt(cam.u);
   updateUI(cam.u);
+  updateSpots();
+  updateMeasureLabel();
+  updateHint();
 });
+
+// Visitor counts on the published site (Vercel Web Analytics); nothing loads locally.
+if (location.hostname.endsWith('.vercel.app')) {
+  const script = document.createElement('script');
+  script.defer = true;
+  script.src = '/_vercel/insights/script.js';
+  document.head.append(script);
+}
 
 // ---------- used by the automated route check ----------
 window.tour = {
@@ -612,10 +861,16 @@ window.tour = {
     renderAt(u);
     updateUI(u);
     renderAt(u);
+    for (let i = 0; i < 6; i++) updateSpots();
+    updateMeasureLabel();
   },
   setFurnished,
   setNight,
   debug: () => ({ renderer, scene, camera, composer, apartment }),
+  snapshot: () => { renderAt(cam.u); return canvas.toDataURL('image/jpeg', 0.82); },
+};
+// Tools for the Blender bake and the route check, only on a local server.
+if (['localhost', '127.0.0.1'].includes(location.hostname)) Object.assign(window.tour, {
   // Writes the whole model for Blender: world-space triangles, material, and which set it belongs to.
   async exportScene(url) {
     apartment.entryLeaf.rotation.y = 0;
@@ -655,18 +910,18 @@ window.tour = {
   // Walks the camera path and reports anything solid within `radius` metres.
   collisions(radius = 0.12) {
     apartment.entryLeaf.rotation.y = 0;
-    const solids = [];
+    const boxes = [];
     for (const g of [apartment.shellGroup, apartment.fixtureGroup, apartment.furnitureGroup]) {
       g.updateMatrixWorld(true);
       g.traverse((m) => {
         if (!m.isMesh || m.userData.noCollide) return;
-        solids.push({ box: new THREE.Box3().setFromObject(m), entry: m.parent === apartment.entryLeaf });
+        boxes.push({ box: new THREE.Box3().setFromObject(m), entry: m.parent === apartment.entryLeaf });
       });
     }
     const hits = new Map(), q = new THREE.Vector3(), sphere = new THREE.Sphere(q, radius);
     for (let u = 2.2; u <= OUT_KEY; u += 0.01) {
       pathP.getPoint(u / (K.length - 1), q);
-      for (const s of solids) {
+      for (const s of boxes) {
         if (s.entry && u < 3.2) continue;
         if (s.box.intersectsSphere(sphere)) {
           const b = s.box;
@@ -675,7 +930,6 @@ window.tour = {
         }
       }
     }
-    return { checked: solids.length, hits: [...hits.values()] };
+    return { checked: boxes.length, hits: [...hits.values()] };
   },
-  snapshot: () => { renderAt(cam.u); return canvas.toDataURL('image/jpeg', 0.82); },
-};
+});

@@ -675,7 +675,9 @@ function updateSpots() {
       const hit = raycaster.intersectObjects(solids, false)[0];
       seen.set(i, !hit || hit.distance > dist - 0.35);
     }
-    const visible = onScreen && seen.get(i) !== false;
+    // Shown only once a ray has confirmed nothing stands in front of it.
+    const visible = onScreen && seen.get(i) === true;
+    if (!onScreen) seen.delete(i);
     b.hidden = !visible;
     if (visible) b.style.transform = `translate(${(p.x * 0.5 + 0.5) * innerWidth}px, ${(-p.y * 0.5 + 0.5) * innerHeight}px)`;
   });

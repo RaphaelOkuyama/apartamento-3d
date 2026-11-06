@@ -1,0 +1,16 @@
+# Build and bake outputs
+/dist/
+/bake/
+/assets_full/
+*.blend
+*.blend1
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Local tooling
+.vercel/
+.DS_Store
+Thumbs.db
